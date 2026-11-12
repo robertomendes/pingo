@@ -2,21 +2,27 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2F4BC7">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Pingo">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
 <title>Pingo — prática diária de matemática</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
 <style>
 :root{--azul:#2F4BC7;--azul-esc:#1E3399;--laranja:#F28C28;--laranja-sombra:#B35E12;--tinta:#1C2340;--cinza:#4A5375;--fundo:#F3F7FF;--verde:#1F7A45;--verde-claro:#EAF6EF;--creme:#FFF1E3;--marrom:#9A3412;--linha:#DDE2EE}
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;background:var(--fundo);color:var(--tinta);font-family:'Nunito',system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;background:var(--fundo);color:var(--tinta);font-family:'Nunito',system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-tap-highlight-color:transparent}
 body{overscroll-behavior:none}
 button,input{font-family:inherit;color:inherit}
 button{cursor:pointer}
 #app{min-height:100%;display:flex;flex-direction:column}
-.tela{flex:1;display:flex;flex-direction:column;gap:20px;padding:24px clamp(16px,3.5vw,40px) 28px;max-width:1280px;width:100%;margin:0 auto}
+.tela{flex:1;display:flex;flex-direction:column;gap:20px;padding:max(24px,env(safe-area-inset-top)) max(clamp(16px,3.5vw,40px),env(safe-area-inset-right)) max(28px,env(safe-area-inset-bottom)) max(clamp(16px,3.5vw,40px),env(safe-area-inset-left));max-width:1280px;width:100%;margin:0 auto}
 .topo{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .marca{display:flex;align-items:center;gap:10px;font-size:30px;font-weight:900;color:var(--azul);letter-spacing:-.5px}
 .chips{display:flex;gap:10px;flex-wrap:wrap}
@@ -91,7 +97,7 @@ h2{margin:0;font-size:28px;font-weight:900}
 /* pais */
 .pais .tela{max-width:900px}
 .campo{display:flex;flex-direction:column;gap:6px;font-size:16px;font-weight:800}
-.campo input{font-size:22px;font-weight:800;padding:12px 14px;border:2px solid var(--linha);border-radius:14px;min-height:52px;background:#fff}
+.campo input{-webkit-user-select:text;user-select:text;font-size:22px;font-weight:800;padding:12px 14px;border:2px solid var(--linha);border-radius:14px;min-height:52px;background:#fff}
 .campo input:focus{outline:3px solid var(--azul);border-color:var(--azul)}
 .metricas{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
 .metrica{background:rgba(255,255,255,.14);border-radius:16px;padding:12px}
@@ -119,8 +125,12 @@ h2{margin:0;font-size:28px;font-weight:900}
 .replay canvas{width:100%;height:120px;background:#FBFCFF;border-radius:12px}
 .ok-txt{color:var(--verde);font-weight:900}.erro-txt{color:var(--marrom);font-weight:900}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.linkbtn{background:none;border:0;padding:0;color:var(--azul);font:inherit;font-weight:800;text-decoration:underline;cursor:pointer}
+.btn-perigo{background:#C2410C;color:#fff}
 :focus-visible{outline:3px solid var(--azul);outline-offset:2px}
 </style>
+<script src="config.js"></script>
+<script src="vendor/supabase.js"></script>
 </head>
 <body>
 <div id="app" aria-live="polite"></div>
@@ -202,21 +212,210 @@ function recognize(strokes, w, h) {
   return { valor: Number(txt), texto: txt, conf };
 }
 
-/* ---------- Dados (ficam neste aparelho) ---------- */
+/* ---------- Dados: ficam no aparelho e, com conta, têm cópia na nuvem ---------- */
 const CHAVE = 'pingo.v1';
+const MAX_LICOES = 400;
 let memoria = null;
+function novoId(p) { try { if (window.crypto && crypto.randomUUID) return p + '-' + crypto.randomUUID(); } catch (e) { } return p + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
 function carregar() {
-  try { const t = localStorage.getItem(CHAVE); if (t) return JSON.parse(t); } catch (e) { }
-  return memoria || { criancas: [], ativa: null, consentimento: false };
+  let d = null;
+  try { const t = localStorage.getItem(CHAVE); if (t) d = JSON.parse(t); } catch (e) { }
+  d = d || memoria || { criancas: [], ativa: null, consentimento: false };
+  d.apagadas = d.apagadas || []; d.conta = d.conta || null; d.criancas = d.criancas || [];
+  for (const c of d.criancas) { // migração da v0.1
+    c.historico = c.historico || [];
+    for (const l of c.historico) if (!l.ts) l.ts = Number(String(l.id).replace(/\D/g, '').slice(0, 13)) || Date.now();
+    if (c.estrelasArq === undefined) c.estrelasArq = Math.max(0, (c.estrelas || 0) - c.historico.reduce((t, l) => t + (l.estrelas || 0), 0));
+    if (c.atualizado === undefined) { c.atualizado = Date.now(); c.sujo = true; }
+    if (c.reinicio === undefined) c.reinicio = 0;
+  }
+  return d;
 }
 let db = carregar();
 function salvar() {
   memoria = db;
   for (const c of db.criancas) {
-    if (c.historico.length > 80) c.historico = c.historico.slice(-80);
-    c.historico.forEach((l, i) => { if (i < c.historico.length - 20) l.itens.forEach(it => { it.tentativas = []; }); });
+    c.historico.sort((a, b) => a.ts - b.ts);
+    while (c.historico.length > MAX_LICOES && (c.historico[0].sinc || !db.conta)) { c.estrelasArq = (c.estrelasArq || 0) + (c.historico[0].estrelas || 0); c.historico.shift(); }
+    c.historico.forEach((l, i) => { if (i < c.historico.length - 20 && (l.sinc || !db.conta)) l.itens.forEach(it => { it.tentativas = []; }); });
   }
   try { localStorage.setItem(CHAVE, JSON.stringify(db)); } catch (e) { }
+}
+function marcar(c) { c.atualizado = Date.now(); c.sujo = true; }
+function recalcular(c) { // estrelas e dias seguidos saem das lições: assim dois aparelhos nunca discordam
+  c.estrelas = (c.estrelasArq || 0) + c.historico.reduce((t, l) => t + (l.estrelas || 0), 0);
+  const dias = Array.from(new Set(c.historico.map(l => l.dia))).sort().reverse();
+  if (dias.length) c.ultimoDia = dias[0];
+  let seq = dias.length ? 1 : 0;
+  for (let i = 1; i < dias.length; i++) { const a = new Date(dias[i - 1] + 'T12:00:00'); a.setDate(a.getDate() - 1); if (hoje(a) === dias[i]) seq++; else break; }
+  if (dias.length) c.sequencia = seq;
+}
+function limparAparelho() { db = { criancas: [], ativa: null, consentimento: false, apagadas: [], conta: null }; licao = null; tracos = []; paisAba = null; salvar(); }
+
+/* ---------- Nuvem (Supabase): conta do responsável, backup e sincronização ---------- */
+const CONFIG = window.PINGO_CONFIG || {};
+const NUVEM = (function () {
+  if (window.PINGO_BACKEND) return window.PINGO_BACKEND; // usado nos testes automáticos
+  if (!CONFIG.supabaseUrl || !CONFIG.supabaseAnonKey || !window.supabase || !window.supabase.createClient) return null;
+  let sb;
+  try { sb = window.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: 'pingo.auth' } }); } catch (e) { return null; }
+  const volta = location.origin + location.pathname;
+  const u = x => x && x.user ? { id: x.user.id, email: x.user.email } : null;
+  const ok = r => { if (r.error) throw r.error; return r.data; };
+  const PAGINA = 500;
+  return {
+    sessao: async () => u(ok(await sb.auth.getSession()).session),
+    aoMudar: fn => sb.auth.onAuthStateChange((ev, x) => setTimeout(() => fn(ev, u(x)), 0)),
+    criarConta: async (email, senha) => { const d = ok(await sb.auth.signUp({ email, password: senha, options: { emailRedirectTo: volta } })); return { usuario: u(d.session), confirmar: !d.session }; },
+    entrar: async (email, senha) => u(ok(await sb.auth.signInWithPassword({ email, password: senha })).session),
+    sair: async () => { await sb.auth.signOut({ scope: 'local' }); },
+    recuperar: async email => { ok(await sb.auth.resetPasswordForEmail(email, { redirectTo: volta })); },
+    novaSenha: async senha => { ok(await sb.auth.updateUser({ password: senha })); },
+    baixar: async cursor => {
+      const criancas = ok(await sb.from('criancas').select('id,nome,cor,hab,nivel,teclado,reinicio,atualizado'));
+      let q = sb.from('licoes').select('id,crianca_id,dia,ts,hab,ms,estrelas,itens,recebido_em').order('recebido_em', { ascending: true }).limit(PAGINA);
+      if (cursor) q = q.gt('recebido_em', cursor);
+      return { criancas, licoes: ok(await q), pagina: PAGINA };
+    },
+    enviarCriancas: async rows => { if (rows.length) ok(await sb.from('criancas').upsert(rows, { onConflict: 'id' })); },
+    enviarLicoes: async rows => { if (rows.length) ok(await sb.from('licoes').upsert(rows, { onConflict: 'id', ignoreDuplicates: true })); },
+    apagarCriancas: async ids => { if (ids.length) ok(await sb.from('criancas').delete().in('id', ids)); },
+    excluirConta: async () => { ok(await sb.rpc('excluir_conta')); await sb.auth.signOut({ scope: 'local' }); }
+  };
+})();
+
+function linhaCrianca(c) { return { id: c.id, nome: c.nome, cor: c.cor, hab: c.hab, nivel: c.nivel, teclado: !!c.teclado, reinicio: c.reinicio || 0, atualizado: c.atualizado || Date.now() }; }
+function linhaLicao(c, l) { return { id: l.id, crianca_id: c.id, dia: l.dia, ts: l.ts, hab: l.hab, ms: Math.max(0, Math.round(l.ms)), estrelas: l.estrelas, itens: l.itens }; }
+
+function mesclar(remotas, licoes) {
+  let mudou = false;
+  const ids = new Set(remotas.map(r => r.id));
+  const antes = db.criancas.length;
+  db.criancas = db.criancas.filter(c => !c.sinc || ids.has(c.id)); // apagada em outro aparelho
+  if (db.criancas.length !== antes) { mudou = true; if (!crianca()) db.ativa = null; }
+  for (const r of remotas) {
+    if (db.apagadas.indexOf(r.id) >= 0) continue;
+    const rr = Number(r.reinicio) || 0, ra = Number(r.atualizado) || 0;
+    let c = db.criancas.find(x => x.id === r.id);
+    if (!c) {
+      db.criancas.push({ id: r.id, nome: r.nome, cor: r.cor, hab: r.hab, nivel: r.nivel, teclado: !!r.teclado, reinicio: rr, atualizado: ra, estrelas: 0, estrelasArq: 0, sequencia: 0, ultimoDia: null, historico: [], sinc: true, sujo: false });
+      mudou = true; continue;
+    }
+    c.sinc = true;
+    if (rr > (c.reinicio || 0)) { c.hab = r.hab; c.nivel = r.nivel; c.reinicio = rr; mudou = true; }
+    else if (rr === (c.reinicio || 0) && r.hab * 10 + r.nivel > c.hab * 10 + c.nivel) { c.hab = r.hab; c.nivel = r.nivel; mudou = true; }
+    if (ra > (c.atualizado || 0)) {
+      if (c.nome !== r.nome || c.cor !== r.cor || !!c.teclado !== !!r.teclado) mudou = true;
+      c.nome = r.nome; c.cor = r.cor; c.teclado = !!r.teclado; c.atualizado = ra;
+    }
+    const l = linhaCrianca(c);
+    if (l.hab !== r.hab || l.nivel !== r.nivel || l.nome !== r.nome || l.cor !== r.cor || l.teclado !== !!r.teclado || l.reinicio !== rr || l.atualizado !== ra) c.sujo = true;
+  }
+  for (const l of licoes) {
+    const c = db.criancas.find(x => x.id === l.crianca_id); if (!c) continue;
+    const ja = c.historico.find(x => x.id === l.id);
+    if (ja) { ja.sinc = true; continue; }
+    c.historico.push({ id: l.id, dia: l.dia, ts: Number(l.ts), hab: l.hab, ms: l.ms, estrelas: l.estrelas, itens: l.itens || [], sinc: true });
+    mudou = true;
+  }
+  for (const c of db.criancas) { c.historico.sort((a, b) => a.ts - b.ts); recalcular(c); }
+  return mudou;
+}
+
+const sinc = { rodando: false, deNovo: false, timer: null, atual: null };
+function agendarSinc(ms) { if (!NUVEM || !db.conta || !db.conta.ativa) return; clearTimeout(sinc.timer); sinc.timer = setTimeout(sincronizar, ms == null ? 800 : ms); }
+function sincronizar() {
+  if (!NUVEM || !db.conta || !db.conta.ativa) return Promise.resolve();
+  if (sinc.rodando) { sinc.deNovo = true; return sinc.atual; }
+  sinc.atual = rodarSinc(); return sinc.atual;
+}
+async function rodarSinc() {
+  if (navigator.onLine === false) { db.estadoSinc = 'offline'; atualizarSelo(); return; }
+  sinc.rodando = true; db.estadoSinc = 'sincronizando'; atualizarSelo();
+  let mudou = false;
+  try {
+    if (db.apagadas.length) { const ids = db.apagadas.slice(); await NUVEM.apagarCriancas(ids); db.apagadas = db.apagadas.filter(x => ids.indexOf(x) < 0); }
+    let cursor = db.cursor ? new Date(Date.parse(db.cursor) - 120000).toISOString() : null, remotas = null, novas = [];
+    for (let i = 0; i < 40; i++) {
+      const r = await NUVEM.baixar(cursor);
+      if (!remotas) remotas = r.criancas || [];
+      novas = novas.concat(r.licoes || []);
+      if (!r.licoes || r.licoes.length < (r.pagina || 500)) break;
+      cursor = r.licoes[r.licoes.length - 1].recebido_em;
+    }
+    mudou = mesclar(remotas, novas);
+    if (novas.length) { const ult = novas[novas.length - 1].recebido_em; if (!db.cursor || Date.parse(ult) > Date.parse(db.cursor)) db.cursor = ult; }
+    const sujas = db.criancas.filter(c => c.sujo || !c.sinc);
+    await NUVEM.enviarCriancas(sujas.map(linhaCrianca));
+    sujas.forEach(c => { c.sujo = false; c.sinc = true; });
+    const pend = [];
+    for (const c of db.criancas) for (const l of c.historico) if (!l.sinc) pend.push([c, l]);
+    for (let i = 0; i < pend.length; i += 25) {
+      const lote = pend.slice(i, i + 25);
+      await NUVEM.enviarLicoes(lote.map(x => linhaLicao(x[0], x[1])));
+      lote.forEach(x => { x[1].sinc = true; });
+    }
+    db.ultimaSinc = Date.now(); db.erroSinc = null; db.estadoSinc = 'ok';
+  } catch (e) {
+    db.erroSinc = traduzErro(e); db.estadoSinc = 'erro';
+    if (e && (e.status === 401 || e.code === 'PGRST301' || /JWT|token/i.test(e.message || ''))) db.conta.ativa = false;
+  } finally {
+    sinc.rodando = false; salvar();
+    const digitando = document.activeElement && document.activeElement.tagName === 'INPUT';
+    if (mudou && ['perfis', 'inicio', 'pais', 'boasvindas'].indexOf(tela) >= 0 && !digitando && !modal) {
+      if (tela === 'boasvindas' && db.criancas.length) tela = crianca() ? 'inicio' : 'perfis';
+      render();
+    } else atualizarSelo();
+    if (sinc.deNovo) { sinc.deNovo = false; agendarSinc(300); }
+  }
+}
+function pendentes() { let n = 0; for (const c of db.criancas) n += c.historico.filter(l => !l.sinc).length; return n; }
+
+function traduzErro(e) {
+  const m = String((e && (e.message || e.error_description || e.msg)) || e || '');
+  if (/Invalid login credentials/i.test(m)) return 'E-mail ou senha incorretos.';
+  if (/already registered|already exists|already been registered/i.test(m)) return 'Esse e-mail já tem conta. Use "Já tenho conta".';
+  if (/Email not confirmed/i.test(m)) return 'Falta confirmar o e-mail: abra o link que enviamos e depois entre aqui.';
+  if (/Password should|weak password|at least/i.test(m)) return 'A senha precisa ter pelo menos 8 caracteres.';
+  if (/rate limit|too many|security purposes/i.test(m)) return 'Muitas tentativas seguidas. Espere alguns minutos e tente de novo.';
+  if (/Failed to fetch|NetworkError|Load failed|network|offline/i.test(m)) return 'Sem conexão com a internet. Tente de novo quando ela voltar.';
+  if (/invalid.*email|email.*invalid/i.test(m)) return 'Esse e-mail não parece válido.';
+  if (/JWT|token|401/i.test(m)) return 'Sessão expirada. Entre de novo.';
+  return 'Não deu certo (' + m.slice(0, 100) + ').';
+}
+function horaBonita(t) {
+  const d = new Date(t), hh = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  return hoje(d) === hoje() ? 'hoje às ' + hh : dataBonita(hoje(d)).toLowerCase() + ' às ' + hh;
+}
+function seloTexto() {
+  if (!NUVEM) return 'O backup na nuvem ainda não foi configurado neste endereço. Os dados ficam só neste aparelho.';
+  if (!db.conta) return 'Sem conta: os dados ficam só neste aparelho.';
+  if (!db.conta.ativa) return 'Sessão expirada. Entre de novo para continuar o backup.';
+  const p = pendentes();
+  if (db.estadoSinc === 'sincronizando') return 'Sincronizando…';
+  if (db.estadoSinc === 'offline') return 'Sem internet agora. ' + (p ? p + (p === 1 ? ' lição espera' : ' lições esperam') + ' para subir quando a conexão voltar.' : 'Tudo fica salvo aqui e sobe quando a conexão voltar.');
+  if (db.estadoSinc === 'erro') return 'Falha no backup: ' + (db.erroSinc || '') + (p ? ' ' + p + (p === 1 ? ' lição aguardando.' : ' lições aguardando.') : '');
+  if (db.ultimaSinc) return 'Backup em dia · ' + horaBonita(db.ultimaSinc);
+  return 'Conectado.';
+}
+function atualizarSelo() { const el = document.getElementById('selo-sinc'); if (el) el.textContent = seloTexto(); }
+function conectar(u, semAgendar) {
+  if (db.conta && db.conta.id && db.conta.id !== u.id) limparAparelho(); // outra conta neste aparelho
+  db.conta = { id: u.id, email: u.email, ativa: true }; db.consentimento = true;
+  salvar();
+  if (!semAgendar) agendarSinc(0);
+}
+async function iniciarNuvem() {
+  if (!NUVEM) return;
+  if (NUVEM.aoMudar) NUVEM.aoMudar((ev, u) => {
+    if (ev === 'PASSWORD_RECOVERY') { contaModo = 'novaSenha'; contaMsg = null; contaVolta = 'pais'; ir('conta'); return; }
+    if (ev === 'SIGNED_IN' && u && !(db.conta && db.conta.id === u.id && db.conta.ativa)) { conectar(u); if (['boasvindas', 'perfis', 'pais'].indexOf(tela) >= 0) render(); }
+  });
+  try {
+    const u = await NUVEM.sessao();
+    if (u) { if (!(db.conta && db.conta.id === u.id && db.conta.ativa)) conectar(u); else agendarSinc(0); }
+    else if (db.conta && db.conta.ativa) { db.conta.ativa = false; salvar(); atualizarSelo(); }
+  } catch (e) { if (db.conta) agendarSinc(0); }
 }
 const HABILIDADES = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 const LICOES_POR_HAB = 2;
@@ -277,6 +476,7 @@ const app = document.getElementById('app');
 let tela = db.criancas.length ? (crianca() ? 'inicio' : 'perfis') : 'boasvindas';
 let licao = null, fimInfo = null, desafio = null, paisAba = null, modal = null, confirmaApagar = false;
 let tracos = [], padTam = { w: 1, h: 1 };
+let contaModo = 'entrar', contaMsg = null, contaOcupado = false, contaVolta = 'pais', contaEmail = '', contaSenha = '', contaOk = false, confirmaSair = false, confirmaExcluir = false;
 
 function ir(t) { tela = t; modal = null; render(); window.scrollTo(0, 0); }
 
@@ -294,7 +494,7 @@ VIEWS.boasvindas = function () {
   return '<main class="tela" style="justify-content:center;align-items:center;text-align:center;max-width:640px">' +
     mascote(150, 'claro') +
     '<h1>Oi! Eu sou o Pingo.</h1><p style="font-size:21px;font-weight:700;margin:0">Vamos praticar matemática um pouquinho por dia, escrevendo com o dedo ou a caneta.</p>' +
-    formPerfil(true) + '</main>';
+    formPerfil(true) + (NUVEM ? '<button class="link-pais" data-act="abrirConta" data-m="entrar">Já uso o Pingo em outro aparelho: entrar na conta</button>' : '') + '</main>';
 };
 
 function formPerfil(primeiro) {
@@ -303,7 +503,7 @@ function formPerfil(primeiro) {
     '<label class="campo">Nome ou apelido da criança<input name="nome" maxlength="20" autocomplete="off" required data-foco></label>' +
     '<fieldset style="border:0;padding:0;margin:0"><legend class="campo" style="margin-bottom:8px">Cor do perfil</legend><div class="cores">' +
     CORES.map((c, i) => '<label><input type="radio" name="cor" value="' + c + '"' + (i === 0 ? ' checked' : '') + '><span style="background:' + c + '"></span><span class="sr">Cor ' + (i + 1) + '</span></label>').join('') + '</div></fieldset>' +
-    (db.consentimento ? '' : '<label style="display:flex;gap:12px;align-items:flex-start;font-size:16px;font-weight:700;line-height:1.4"><input type="checkbox" name="ok" required style="width:24px;height:24px;flex:none;margin-top:2px">Sou o responsável e autorizo guardar o progresso da criança neste aparelho. Nada é enviado para a internet, não há anúncios e não há compras dentro do app.</label>') +
+    (db.consentimento ? '' : '<label style="display:flex;gap:12px;align-items:flex-start;font-size:16px;font-weight:700;line-height:1.4"><input type="checkbox" name="ok" required style="width:24px;height:24px;flex:none;margin-top:2px">Sou o responsável e autorizo guardar o progresso da criança neste aparelho. Sem conta, nada é enviado para a internet. Não há anúncios nem compras dentro do app.</label>') +
     '<button class="btn btn-laranja" type="submit">Criar perfil</button>' +
     (primeiro ? '' : '<button class="btn btn-claro btn-pequeno" type="button" data-act="voltarPerfis">Cancelar</button>') + '</form>';
 }
@@ -388,6 +588,41 @@ VIEWS.fim = function () {
     '<button class="btn btn-laranja" data-act="inicio" data-foco>Voltar para o início</button></section></div></main>';
 };
 
+VIEWS.conta = function () {
+  if (!NUVEM) return '<main class="tela" style="max-width:560px;justify-content:center"><section class="cartao"><p>O backup na nuvem ainda não foi configurado neste endereço.</p><button class="btn btn-claro btn-pequeno" data-act="contaVoltar">Voltar</button></section></main>';
+  const tit = { entrar: 'Entrar na conta', criar: 'Criar a conta do responsável', recuperar: 'Recuperar a senha', novaSenha: 'Criar uma senha nova', confirmar: 'Confirme seu e-mail' }[contaModo];
+  let h = '<main class="tela" style="max-width:560px;justify-content:center"><form class="cartao" data-form="conta" style="display:flex;flex-direction:column;gap:16px" novalidate><p class="rotulo">Área dos pais</p><h2>' + tit + '</h2>';
+  if (contaModo === 'confirmar') {
+    h += '<p style="margin:0;font-size:18px;font-weight:700;line-height:1.45">Enviamos um link para <b>' + esc(contaEmail) + '</b>. Abra o e-mail, toque no link e depois volte aqui para entrar.</p>' +
+      '<button class="btn btn-laranja" type="button" data-act="contaModo" data-m="entrar">Já confirmei, quero entrar</button>';
+  } else {
+    if (contaModo === 'criar') h += '<p style="margin:0;font-size:16px;font-weight:600;line-height:1.45">Com a conta, o progresso fica guardado na nuvem e a criança pode praticar em mais de um aparelho. A conta é sua: a criança não informa e-mail.</p>';
+    if (contaModo !== 'novaSenha') h += '<label class="campo">E-mail<input name="email" type="email" autocomplete="email" inputmode="email" autocapitalize="off" required value="' + esc(contaEmail) + '" data-foco></label>';
+    if (contaModo !== 'recuperar') h += '<label class="campo">' + (contaModo === 'entrar' ? 'Senha' : 'Senha (pelo menos 8 caracteres)') + '<input name="senha" type="password" autocomplete="' + (contaModo === 'entrar' ? 'current-password' : 'new-password') + '" minlength="8" required value="' + esc(contaSenha) + '"' + (contaModo === 'novaSenha' ? ' data-foco' : '') + '></label>';
+    if (contaModo === 'criar') h += '<label style="display:flex;gap:12px;align-items:flex-start;font-size:16px;font-weight:700;line-height:1.4"><input type="checkbox" name="ok"' + (contaOk ? ' checked' : '') + ' style="width:24px;height:24px;flex:none;margin-top:2px"><span>Sou maior de 18 anos, responsável pela(s) criança(s), e li a <button type="button" class="linkbtn" data-act="privacidade">política de privacidade</button>.</span></label>';
+    if ((contaModo === 'criar' || contaModo === 'entrar') && db.criancas.some(c => !c.sinc)) h += '<p class="peq" style="margin:0">As crianças já cadastradas neste aparelho vão para a sua conta.</p>';
+    if (contaMsg) h += '<p class="' + (contaMsg.ok ? 'ok-txt' : 'erro-txt') + '" role="alert" style="margin:0;font-size:16px">' + esc(contaMsg.t) + '</p>';
+    h += '<button class="btn btn-laranja" type="submit"' + (contaOcupado ? ' disabled' : '') + '>' + (contaOcupado ? 'Aguarde…' : { entrar: 'Entrar', criar: 'Criar conta', recuperar: 'Enviar link para criar senha nova', novaSenha: 'Salvar senha nova' }[contaModo]) + '</button>';
+    if (contaModo === 'entrar') h += '<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:16px"><button type="button" class="linkbtn" data-act="contaModo" data-m="criar" style="min-height:44px">Ainda não tenho conta</button><button type="button" class="linkbtn" data-act="contaModo" data-m="recuperar" style="min-height:44px">Esqueci a senha</button></div>';
+    else if (contaModo !== 'novaSenha') h += '<button type="button" class="linkbtn" data-act="contaModo" data-m="entrar" style="min-height:44px;align-self:flex-start;font-size:16px">Já tenho conta</button>';
+  }
+  return h + '<button class="btn btn-claro btn-pequeno" type="button" data-act="contaVoltar">Voltar</button></form></main>';
+};
+
+function modalPrivacidade() {
+  const itens = [
+    'A conta é do responsável, maior de 18 anos. A criança não cria conta e não informa e-mail.',
+    'O que guardamos: o e-mail do responsável; o nome ou apelido e a cor do perfil de cada criança; as lições feitas (contas, respostas, tempo e o traçado da escrita, usado no replay).',
+    'Para quê: mostrar o progresso, fazer o backup e permitir o uso em mais de um aparelho. Nada é vendido nem compartilhado. Não há anúncios, compras para a criança ou rastreadores de terceiros.',
+    'Onde: sem conta, só neste aparelho. Com conta, também no banco de dados do Pingo (Supabase, região ' + esc(CONFIG.regiao || 'São Paulo, Brasil') + '), onde cada conta só enxerga os próprios dados.',
+    'Seus direitos: ver, corrigir e apagar. Em Área dos pais › Conta e backup você exclui a conta e todos os dados de uma vez.',
+    'Contato: ' + esc(CONFIG.contato || '[E-MAIL DE CONTATO]')
+  ];
+  return '<div class="modal" role="dialog" aria-modal="true" aria-label="Privacidade no Pingo"><div class="caixa"><div class="topo"><h2 style="font-size:22px">Privacidade no Pingo</h2><button class="btn btn-claro btn-pequeno" data-act="fecharModal" data-foco>Fechar</button></div>' +
+    '<ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:10px;font-size:16px;font-weight:600;line-height:1.5">' + itens.map(t => '<li>' + t + '</li>').join('') + '</ul>' +
+    '<p class="peq" style="margin:0">Resumo para a fase de piloto.</p></div></div>';
+}
+
 VIEWS.portao = function () {
   return '<main class="tela" style="max-width:560px;justify-content:center"><form class="cartao" data-form="portao" style="display:flex;flex-direction:column;gap:16px">' +
     '<p class="rotulo">Só para adultos</p><h2>Quanto é ' + desafio.a + ' × ' + desafio.b + '?</h2>' +
@@ -417,6 +652,24 @@ function dataBonita(d) {
   const dt = new Date(d + 'T12:00:00'); return ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'][dt.getDay()] + ', ' + dt.getDate() + '/' + (dt.getMonth() + 1);
 }
 
+function cartaoConta() {
+  let h = '<section class="cartao" style="display:flex;flex-direction:column;gap:12px"><h2 style="font-size:22px">Conta e backup</h2>' +
+    '<p id="selo-sinc" role="status" style="margin:0;font-size:16px;font-weight:700;color:#4A5375">' + esc(seloTexto()) + '</p>';
+  if (NUVEM && !db.conta) {
+    h += '<p style="margin:0;font-size:16px;font-weight:600;line-height:1.45">Crie uma conta para guardar o progresso na nuvem e usar o Pingo em mais de um aparelho.</p>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-laranja btn-pequeno" data-act="abrirConta" data-m="criar">Criar conta</button><button class="btn btn-claro btn-pequeno" data-act="abrirConta" data-m="entrar">Já tenho conta</button></div>';
+  } else if (NUVEM && db.conta) {
+    const p = pendentes();
+    h += '<p style="margin:0;font-size:16px;font-weight:800">Conta: ' + esc(db.conta.email || '') + '</p><div style="display:flex;gap:10px;flex-wrap:wrap">' +
+      (db.conta.ativa ? '<button class="btn btn-claro btn-pequeno" data-act="sincAgora">Sincronizar agora</button>' : '<button class="btn btn-laranja btn-pequeno" data-act="abrirConta" data-m="entrar">Entrar de novo</button>') +
+      (confirmaSair ? '<button class="btn btn-perigo btn-pequeno" data-act="sairConta">Confirmar saída</button><button class="btn btn-claro btn-pequeno" data-act="cancelaSair">Cancelar</button>' : '<button class="btn btn-claro btn-pequeno" data-act="pedeSair">Sair da conta</button>') +
+      (confirmaExcluir ? '<button class="btn btn-perigo btn-pequeno" data-act="excluirConta">Confirmar: excluir a conta e todos os dados</button><button class="btn btn-claro btn-pequeno" data-act="cancelaExcluir">Cancelar</button>' : '<button class="btn btn-claro btn-pequeno" data-act="pedeExcluir">Excluir conta</button>') + '</div>';
+    if (confirmaSair) h += '<p class="peq" style="margin:0">Ao sair, os dados saem deste aparelho e continuam guardados na conta.' + (p ? ' Atenção: ' + p + (p === 1 ? ' lição ainda não foi enviada e será perdida.' : ' lições ainda não foram enviadas e serão perdidas.') : '') + '</p>';
+    if (confirmaExcluir) h += '<p class="erro-txt" style="margin:0">Isso apaga para sempre a conta, as crianças e todas as lições, em todos os aparelhos.</p>';
+  }
+  return h + '<button class="linkbtn" data-act="privacidade" style="align-self:flex-start;min-height:44px;font-size:16px">Política de privacidade</button></section>';
+}
+
 VIEWS.pais = function () {
   const c = db.criancas.find(x => x.id === paisAba) || db.criancas[0];
   let html = '<main class="tela"><div class="topo"><div class="marca" style="font-size:24px">' + gota(28) + 'Pingo <span style="font-weight:700;color:#4A5375">para pais</span></div>' +
@@ -426,9 +679,9 @@ VIEWS.pais = function () {
   html += '<div class="chips" role="tablist" aria-label="Crianças">' + db.criancas.map(x => '<button class="chip" role="tab" aria-selected="' + (x.id === c.id) + '" data-act="abaPais" data-id="' + x.id + '" style="padding:6px 16px 6px 6px;' + (x.id === c.id ? 'outline:3px solid #2F4BC7' : '') + '">' + avatar(x) + esc(x.nome) + '</button>').join('') +
     '<button class="chip" data-act="novaCrianca">+ Adicionar criança</button></div>';
   const r = resumo(c);
-  html += '<section class="heroi" style="gap:14px;border-radius:24px"><p style="margin:0;font-size:15px;font-weight:800">Últimos 7 dias</p><p style="margin:0;font-size:24px;font-weight:900;line-height:1.25">' +
+  html += '<section class="heroi" style="gap:14px;border-radius:24px;min-height:0"><p style="margin:0;font-size:15px;font-weight:800">Últimos 7 dias</p><p style="margin:0;font-size:24px;font-weight:900;line-height:1.25">' +
     (r.sem.length ? esc(c.nome) + ' praticou ' + r.dias + ' de 7 dias e está no Somando ' + HABILIDADES[c.hab] + '.' : esc(c.nome) + ' ainda não praticou nesta semana.') + '</p>' +
-    '<div class="metricas"><div class="metrica"><b>' + (r.min >= 1 ? r.min + ' min' : (r.sem.length ? '&lt;1 min' : '0 min')) + '</b><span>de prática</span></div><div class="metrica"><b>' + r.pct + '%</b><span>de acertos de primeira</span></div><div class="metrica"><b>' + r.itens.length + '</b><span>continhas</span></div><div class="metrica"><b>' + sequenciaAtual(c) + '</b><span>dias seguidos</span></div></div></section>';
+    '<div class="metricas"><div class="metrica"><b>' + (r.min >= 1 ? r.min + ' min' : (r.sem.length ? '&lt;1 min' : '0 min')) + '</b><span>de prática</span></div><div class="metrica"><b>' + r.pct + '%</b><span>de acertos de primeira</span></div><div class="metrica"><b>' + r.itens.length + '</b><span>continhas</span></div><div class="metrica"><b>' + sequenciaAtual(c) + '</b><span>' + (sequenciaAtual(c) === 1 ? 'dia seguido' : 'dias seguidos') + '</span></div></div></section>';
   if (r.pior != null) {
     const cruza = r.contas.some(k => { const [a, b] = k.split(' + ').map(Number); return a + b > 10 && Math.max(a, b) < 10; });
     html += '<section class="aviso aviso-erro" style="align-items:flex-start;border-radius:24px"><div class="txt"><p class="tit" style="font-size:19px">Ponto de atenção: somar ' + HABILIDADES[r.pior] + '</p>' +
@@ -441,11 +694,12 @@ VIEWS.pais = function () {
     return '<div class="item"><span class="tag" style="background:' + (ok >= 4 ? '#EAF6EF;color:#1F7A45' : '#FFF1E3;color:#9A3412') + '">+' + HABILIDADES[l.hab] + '</span><div class="info"><p style="font-weight:800">Somando ' + HABILIDADES[l.hab] + '</p><p class="peq">' + dataBonita(l.dia) + ' · ' + ok + ' de 5 de primeira · ' + Math.max(1, Math.round(l.ms / 60000)) + ' min</p></div>' +
       '<button class="btn btn-claro btn-pequeno" data-act="replay" data-id="' + l.id + '" aria-label="Ver replay da lição de ' + dataBonita(l.dia) + '">Replay</button></div>';
   }).join('') : '<p class="peq" style="margin:0">As lições aparecem aqui depois da primeira prática.</p>') + '</div></section>';
-  html += '<section class="cartao" style="display:flex;flex-direction:column;gap:12px"><h2 style="font-size:22px">Ajustes de ' + esc(c.nome) + '</h2>' +
+  html += cartaoConta();
+  html += '<section class="cartao" style="display:flex;flex-direction:column;gap:12px"><h2 style="font-size:22px">Ajustes de '  + esc(c.nome) + '</h2>' +
     '<label style="display:flex;gap:12px;align-items:center;font-size:17px;font-weight:700"><input type="checkbox" data-act="toggleTeclado" ' + (c.teclado ? 'checked' : '') + ' style="width:24px;height:24px">Responder pelo teclado numérico em vez de escrever</label>' +
     '<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-claro btn-pequeno" data-act="reiniciar">Recomeçar a trilha</button>' +
     (confirmaApagar ? '<button class="btn btn-pequeno" style="background:#C2410C;color:#fff" data-act="apagarCrianca">Confirmar: apagar perfil e dados</button><button class="btn btn-claro btn-pequeno" data-act="cancelaApagar">Cancelar</button>' : '<button class="btn btn-claro btn-pequeno" data-act="pedeApagar">Apagar perfil e dados</button>') + '</div>' +
-    '<p class="peq" style="margin:0">Os dados ficam só neste aparelho. Nada é enviado para a internet.</p></section></main>';
+    '</section></main>';
   return html;
 };
 
@@ -507,18 +761,18 @@ function fecharItem() {
 
 function terminarLicao() {
   const c = crianca(), L = licao;
+  if (!c) { licao = null; tracos = []; return ir(db.criancas.length ? 'perfis' : 'boasvindas'); }
   const dp = L.itens.filter(i => i.deprimeira).length;
   const estrelas = dp === 5 ? 3 : dp >= 4 ? 2 : 1;
   const d = hoje();
-  if (c.ultimoDia !== d) { c.sequencia = c.ultimoDia === diaAntes(1) ? c.sequencia + 1 : 1; c.ultimoDia = d; }
-  c.estrelas += estrelas;
   const passou = dp >= 4; let subiu = false, terminouTudo = false;
   if (passou && L.hab === c.hab && c.nivel < LICOES_POR_HAB) {
     c.nivel++;
     if (c.nivel >= LICOES_POR_HAB) { if (c.hab < HABILIDADES.length - 1) { c.hab++; c.nivel = 0; } else terminouTudo = true; subiu = true; }
+    marcar(c);
   }
-  c.historico.push({ id: 'l' + Date.now(), dia: d, hab: L.hab, itens: L.itens, ms: Date.now() - L.inicio, estrelas });
-  salvar();
+  c.historico.push({ id: novoId('lic'), ts: Date.now(), dia: d, hab: L.hab, itens: L.itens, ms: Date.now() - L.inicio, estrelas, sinc: false });
+  recalcular(c); salvar(); agendarSinc(400);
   fimInfo = { deprimeira: dp, estrelas, passou, subiu, terminouTudo };
   licao = null; tracos = [];
   ir('fim');
@@ -567,7 +821,7 @@ const ACOES = {
   ouvir: () => { const p = licao.probs[licao.i]; falar('Quanto é ' + p.a + ' mais ' + p.b + '?'); },
   apagar: () => { const L = licao; if (crianca().teclado) L.digitado = L.digitado.slice(0, -1); else tracos = []; if (L.status !== 'ok') L.status = 'escrever'; render(); },
   tecla: d => { const L = licao; L.digitado = (L.digitado + d.k).slice(-2); L.status = 'escrever'; render(); },
-  modo: () => { const c = crianca(); c.teclado = !c.teclado; salvar(); tracos = []; licao.digitado = ''; licao.status = 'escrever'; render(); },
+  modo: () => { const c = crianca(); c.teclado = !c.teclado; marcar(c); salvar(); agendarSinc(); tracos = []; licao.digitado = ''; licao.status = 'escrever'; render(); },
   conferir: () => {
     const L = licao, c = crianca();
     if (c.teclado) { if (!L.digitado) return aviso('Toque nos números primeiro.'); return avaliar(Number(L.digitado)); }
@@ -595,12 +849,48 @@ const ACOES = {
   replay: d => abrirReplay(d.id),
   replayDeNovo: () => { if (modal && modal.depois) modal.depois(); },
   fecharModal: () => { modal = null; render(); },
-  toggleTeclado: () => { const c = db.criancas.find(x => x.id === paisAba); c.teclado = !c.teclado; salvar(); render(); },
-  reiniciar: () => { const c = db.criancas.find(x => x.id === paisAba); c.hab = 0; c.nivel = 0; salvar(); render(); },
+  toggleTeclado: () => { const c = db.criancas.find(x => x.id === paisAba); c.teclado = !c.teclado; marcar(c); salvar(); agendarSinc(); render(); },
+  reiniciar: () => { const c = db.criancas.find(x => x.id === paisAba); c.hab = 0; c.nivel = 0; c.reinicio = Date.now(); marcar(c); salvar(); agendarSinc(); render(); },
   pedeApagar: () => { confirmaApagar = true; render(); },
   cancelaApagar: () => { confirmaApagar = false; render(); },
-  apagarCrianca: () => { db.criancas = db.criancas.filter(x => x.id !== paisAba); if (db.ativa === paisAba) db.ativa = null; paisAba = null; confirmaApagar = false; salvar(); db.criancas.length ? render() : ir('boasvindas'); }
+  abrirConta: d => { contaModo = d.m || 'entrar'; contaMsg = null; contaSenha = ''; contaOk = false; contaVolta = tela === 'pais' ? 'pais' : 'inicio'; ir('conta'); },
+  contaModo: d => { guardarForm(); contaModo = d.m; contaMsg = null; render(); },
+  contaVoltar: () => { contaMsg = null; contaSenha = ''; if (contaVolta === 'pais' && db.criancas.length) ir('pais'); else ir(db.criancas.length ? (crianca() ? 'inicio' : 'perfis') : 'boasvindas'); },
+  privacidade: () => { guardarForm(); modal = modalPrivacidade; render(); },
+  sincAgora: () => { sincronizar(); atualizarSelo(); },
+  pedeSair: () => { confirmaSair = true; confirmaExcluir = false; render(); },
+  cancelaSair: () => { confirmaSair = false; render(); },
+  sairConta: async () => { try { if (NUVEM) await NUVEM.sair(); } catch (e) { } limparAparelho(); confirmaSair = false; ir('boasvindas'); },
+  pedeExcluir: () => { confirmaExcluir = true; confirmaSair = false; render(); },
+  cancelaExcluir: () => { confirmaExcluir = false; render(); },
+  excluirConta: async () => {
+    try { await NUVEM.excluirConta(); limparAparelho(); confirmaExcluir = false; ir('boasvindas'); }
+    catch (e) { db.erroSinc = traduzErro(e); db.estadoSinc = 'erro'; confirmaExcluir = false; render(); }
+  },
+  apagarCrianca: () => { const ap = db.criancas.find(x => x.id === paisAba); if (ap && ap.sinc) db.apagadas.push(ap.id); agendarSinc(0); db.criancas = db.criancas.filter(x => x.id !== paisAba); if (db.ativa === paisAba) db.ativa = null; paisAba = null; confirmaApagar = false; salvar(); db.criancas.length ? render() : ir('boasvindas'); }
 };
+function guardarForm() {
+  const e = app.querySelector('input[name=email]'), s2 = app.querySelector('input[name=senha]'), ok = app.querySelector('input[name=ok]');
+  if (e) contaEmail = e.value.trim(); if (s2) contaSenha = s2.value; if (ok) contaOk = ok.checked;
+}
+async function enviarConta(fd) {
+  const email = String(fd.get('email') == null ? contaEmail : fd.get('email')).trim(), senha = String(fd.get('senha') || '');
+  contaEmail = email; contaSenha = senha; contaOk = !!fd.get('ok');
+  if (contaModo !== 'novaSenha' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { contaMsg = { t: 'Digite um e-mail válido.' }; return render(); }
+  if (contaModo !== 'recuperar' && senha.length < 8) { contaMsg = { t: 'A senha precisa ter pelo menos 8 caracteres.' }; return render(); }
+  if (contaModo === 'criar' && !contaOk) { contaMsg = { t: 'Marque a confirmação de responsável para continuar.' }; return render(); }
+  contaOcupado = true; contaMsg = null; render();
+  let entrou = false;
+  try {
+    if (contaModo === 'entrar') { const u = await NUVEM.entrar(email, senha); conectar(u, true); entrou = true; }
+    else if (contaModo === 'criar') { const r = await NUVEM.criarConta(email, senha); if (r.usuario) { conectar(r.usuario, true); entrou = true; } else contaModo = 'confirmar'; }
+    else if (contaModo === 'recuperar') { await NUVEM.recuperar(email); contaMsg = { ok: true, t: 'Se esse e-mail tiver conta, enviamos um link para criar uma senha nova.' }; }
+    else if (contaModo === 'novaSenha') { await NUVEM.novaSenha(senha); const u = await NUVEM.sessao(); if (u) { conectar(u, true); entrou = true; } }
+  } catch (e) { contaMsg = { t: traduzErro(e) }; }
+  contaOcupado = false; contaSenha = '';
+  if (entrou) { await sincronizar(); contaMsg = null; if (contaVolta === 'pais' && db.criancas.length) { paisAba = db.ativa && crianca() ? db.ativa : db.criancas[0].id; ir('pais'); } else ir(db.criancas.length ? (crianca() ? 'inicio' : 'perfis') : 'boasvindas'); return; }
+  if (tela === 'conta') render();
+}
 function aviso(m) { licao.status = 'aviso'; licao.msg = m; render(); const q = app.querySelector('.quadro'); if (q) q.classList.add('balanca'); }
 
 app.addEventListener('click', e => {
@@ -613,8 +903,9 @@ app.addEventListener('submit', e => {
   if (e.target.dataset.form === 'perfil') {
     const nome = String(fd.get('nome') || '').trim().slice(0, 20); if (!nome) return;
     db.consentimento = true;
-    const c = { id: 'c' + Date.now(), nome, cor: String(fd.get('cor') || CORES[0]), hab: 0, nivel: 0, estrelas: 0, sequencia: 0, ultimoDia: null, teclado: false, historico: [] };
-    db.criancas.push(c); db.ativa = c.id; salvar(); paisAba = null; ir('inicio');
+    const c = { id: novoId('cri'), nome, cor: String(fd.get('cor') || CORES[0]), hab: 0, nivel: 0, estrelas: 0, estrelasArq: 0, sequencia: 0, ultimoDia: null, teclado: false, reinicio: 0, atualizado: Date.now(), sujo: true, sinc: false, historico: [] };
+    db.criancas.push(c); db.ativa = c.id; salvar(); agendarSinc(0); paisAba = null; ir('inicio');
+  } else if (e.target.dataset.form === 'conta') { enviarConta(fd);
   } else if (e.target.dataset.form === 'portao') {
     if (Number(fd.get('r')) === desafio.a * desafio.b) { paisAba = db.ativa || (db.criancas[0] && db.criancas[0].id); ir('pais'); }
     else { desafio = { a: 6 + Math.floor(Math.random() * 4), b: 6 + Math.floor(Math.random() * 4), erro: true }; render(); }
@@ -622,8 +913,13 @@ app.addEventListener('submit', e => {
 });
 app.addEventListener('keydown', e => { if (e.key === 'Escape' && modal) { modal = null; render(); } });
 
-window.PINGO_TEST = { recognize, rasterize, NET, novaLicao, dica };
+window.PINGO_TEST = { recognize, rasterize, NET, novaLicao, dica, mesclar, get db() { return db; } };
+window.addEventListener('online', () => agendarSinc(200));
+window.addEventListener('offline', () => { db.estadoSinc = 'offline'; atualizarSelo(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') agendarSinc(1000); });
 render();
+iniciarNuvem();
+if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body>
 </html>

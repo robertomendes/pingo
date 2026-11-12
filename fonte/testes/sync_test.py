@@ -1,0 +1,132 @@
+import asyncio, json, re, itertools, datetime
+from playwright.async_api import async_playwright
+BASE='http://localhost:8766/'
+class Server:
+    def __init__(s): s.users={}; s.toks={}; s.cri={}; s.lic=[]; s.offline=set(); s.clock=itertools.count(1); s.PAG=3; s.calls=[]
+    def ts(s): return (datetime.datetime(2026,11,12,tzinfo=datetime.timezone.utc)+datetime.timedelta(seconds=next(s.clock))).isoformat()
+    def handle(s, dev, op, args, tok):
+        s.calls.append((dev,op))
+        if dev in s.offline: return {'erro':'Failed to fetch'}
+        a=json.loads(args)
+        if op=='criar':
+            if a['email'] in s.users: return {'erro':'User already registered'}
+            uid=f'u{len(s.users)+1}'; s.users[a['email']]={'id':uid,'senha':a['senha']}; t='t'+uid+str(next(s.clock)); s.toks[t]=uid; return {'ok':{'tok':t,'u':{'id':uid,'email':a['email']}}}
+        if op=='entrar':
+            u=s.users.get(a['email'])
+            if not u or u['senha']!=a['senha']: return {'erro':'Invalid login credentials'}
+            t='t'+u['id']+str(next(s.clock)); s.toks[t]=u['id']; return {'ok':{'tok':t,'u':{'id':u['id'],'email':a['email']}}}
+        uid=s.toks.get(tok)
+        if not uid: return {'erro':'JWT expired','status':401}
+        email=[e for e,u in s.users.items() if u['id']==uid][0]
+        if op=='sessao': return {'ok':{'id':uid,'email':email}}
+        if op=='baixar':
+            cs=[{k:v for k,v in c.items() if k!='dono'} for c in s.cri.values() if c['dono']==uid]
+            ls=[l for l in s.lic if l['dono']==uid and (not a.get('cursor') or l['recebido_em']>a['cursor'])][:s.PAG]
+            return {'ok':{'criancas':cs,'licoes':[{k:v for k,v in l.items() if k!='dono'} for l in ls],'pagina':s.PAG}}
+        if op=='upC':
+            for r in a['rows']:
+                ex=s.cri.get(r['id'])
+                if ex and ex['dono']!=uid: return {'erro':'rls'}
+                s.cri[r['id']]=dict(r,dono=uid)
+            return {'ok':None}
+        if op=='upL':
+            have={l['id'] for l in s.lic}
+            for r in a['rows']:
+                c=s.cri.get(r['crianca_id'])
+                if not c or c['dono']!=uid: return {'erro':'new row violates row-level security policy'}
+                if r['id'] not in have: s.lic.append(dict(r,dono=uid,recebido_em=s.ts()))
+            return {'ok':None}
+        if op=='delC':
+            for i in a['ids']:
+                if i in s.cri and s.cri[i]['dono']==uid: del s.cri[i]; s.lic=[l for l in s.lic if l['crianca_id']!=i]
+            return {'ok':None}
+        if op=='excluir':
+            s.cri={k:v for k,v in s.cri.items() if v['dono']!=uid}; s.lic=[l for l in s.lic if l['dono']!=uid]
+            s.users={e:u for e,u in s.users.items() if u['id']!=uid}; s.toks={t:u for t,u in s.toks.items() if u!=uid}; return {'ok':None}
+        return {'erro':'op?'}
+MOCK_JS='''window.PINGO_BACKEND=(function(){const call=async(op,args)=>{const r=JSON.parse(await window.mockServer(op,JSON.stringify(args||{}),localStorage.getItem('mock.tok')||''));if(r.erro){const e=new Error(r.erro);e.status=r.status;throw e;}return r.ok;};
+return{sessao:async()=>{if(!localStorage.getItem('mock.tok'))return null;try{return await call('sessao')}catch(e){return null}},aoMudar:()=>{},
+criarConta:async(email,senha)=>{const r=await call('criar',{email,senha});localStorage.setItem('mock.tok',r.tok);return{usuario:r.u,confirmar:false}},
+entrar:async(email,senha)=>{const r=await call('entrar',{email,senha});localStorage.setItem('mock.tok',r.tok);return r.u},
+sair:async()=>{localStorage.removeItem('mock.tok')},recuperar:async()=>{},novaSenha:async()=>{},
+baixar:c=>call('baixar',{cursor:c}),enviarCriancas:rows=>call('upC',{rows}),enviarLicoes:rows=>call('upL',{rows}),apagarCriancas:ids=>call('delC',{ids}),
+excluirConta:async()=>{await call('excluir');localStorage.removeItem('mock.tok')}}})();'''
+S=Server(); errs=[]
+async def device(br,name):
+    ctx=await br.new_context(viewport={'width':1180,'height':820},service_workers='block')
+    await ctx.expose_function('mockServer', lambda op,args,tok: json.dumps(S.handle(name,op,args,tok)))
+    await ctx.add_init_script(MOCK_JS)
+    pg=await ctx.new_page(); pg.on('pageerror',lambda e:errs.append(name+': '+str(e)))
+    await pg.goto(BASE); return pg
+async def st(pg): return await pg.evaluate('JSON.parse(JSON.stringify(PINGO_TEST.db))')
+async def idle(pg,t=1200): await pg.wait_for_timeout(t)
+async def lesson(pg, wrong=False):
+    await pg.click('[data-act=comecar]')
+    db=await st(pg); c=[x for x in db['criancas'] if x['id']==db['ativa']][0]
+    if not c['teclado']: await pg.click('[data-act=modo]')
+    for i in range(5):
+        a,b=map(int,re.findall(r'\d+',await pg.locator('.conta').get_attribute('aria-label')))
+        v=a+b+(1 if wrong and i<2 else 0)
+        for ch in str(v): await pg.click(f'[data-act=tecla][data-k="{ch}"]')
+        await pg.click('[data-act=conferir]')
+        if wrong and i<2:
+            for ch in str(a+b): await pg.click(f'[data-act=tecla][data-k="{ch}"]')
+            await pg.click('[data-act=conferir]')
+        await pg.click('[data-act=proxima]')
+    await pg.click('[data-act=inicio]')
+async def pais(pg):
+    await pg.click('[data-act=abrirPais] >> nth=0')
+    x,y=map(int,re.findall(r'\d+',await pg.locator('h2').inner_text())); await pg.fill('input[name=r]',str(x*y)); await pg.click('button[type=submit]')
+def resumo(db): return [(c['nome'],c['hab'],c['nivel'],c['estrelas'],len(c['historico']),c.get('teclado'),sum(1 for l in c['historico'] if not l.get('sinc'))) for c in db['criancas']]
+def check(cond,msg): print(('OK   ' if cond else 'FALHA ')+msg); assert cond, msg
+async def main():
+    async with async_playwright() as p:
+        br=await p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--no-sandbox'])
+        A=await device(br,'A')
+        await A.fill('input[name=nome]','Nina'); await A.check('input[name=ok]'); await A.click('button[type=submit]')
+        await lesson(A)
+        check(len(S.calls)==0,'sem conta: nada vai para o servidor')
+        await pais(A); await A.click('[data-act=abrirConta][data-m=criar]')
+        await A.fill('input[name=email]','pai@x.com'); await A.fill('input[name=senha]','12345678'); await A.check('input[name=ok]'); await A.click('button[type=submit]'); await idle(A)
+        check(len(S.cri)==1 and len(S.lic)==1,'A criou conta: criança e lição antiga subiram (%d,%d)'%(len(S.cri),len(S.lic)))
+        selo=await A.locator('#selo-sinc').inner_text(); check('Backup em dia' in selo,'selo: '+selo)
+        await A.screenshot(path='/home/claude/pingo/test/v2_pais_conta.png',full_page=True)
+        B=await device(br,'B')
+        await B.click('[data-act=abrirConta][data-m=entrar]'); await B.fill('input[name=email]','pai@x.com'); await B.fill('input[name=senha]','errada12'); await B.click('button[type=submit]'); await idle(B,500)
+        check('incorretos' in await B.locator('[role=alert]').inner_text(),'senha errada mostra erro em português')
+        await B.fill('input[name=senha]','12345678'); await B.click('button[type=submit]'); await idle(B)
+        check(await B.locator('.perfil').count()==1,'B entrou e vê a Nina')
+        await B.click('.perfil'); await lesson(B); await lesson(B); await idle(B)
+        dA=await st(A); dB=await st(B)
+        check(len(S.lic)==3,'servidor tem 3 lições')
+        await A.reload(); await idle(A); dA=await st(A)
+        check(resumo(dA)==resumo(await st(B)),'A e B iguais depois de sincronizar: %s'%resumo(dA))
+        check(dA['criancas'][0]['hab']==1,'progresso feito no B (destravou +2) chegou no A')
+        # conflito offline
+        S.offline.add('A'); await A.click('[data-act=escolher] >> nth=0') if await A.locator('.perfil').count() else None
+        await lesson(A, wrong=True); await idle(A)
+        check(resumo(await st(A))[0][6]==1,'A offline: lição fica pendente')
+        await pais(B); await B.click('[data-act=toggleTeclado]'); await idle(B)
+        S.offline.discard('A'); await A.reload(); await idle(A,1500)
+        await B.reload(); await idle(B,1500)
+        rA=resumo(await st(A)); rB=resumo(await st(B))
+        check(rA==rB and rA[0][4]==4,'após voltar online: 4 lições nos dois %s'%rA)
+        check(rA[0][5] is False,'ajuste mais recente (teclado desligado no B) venceu no A')
+        # recomeçar trilha
+        await pais(B); await B.click('[data-act=reiniciar]'); await idle(B); await A.reload(); await idle(A)
+        check(resumo(await st(A))[0][1]==0,'recomeçar a trilha no B vale no A')
+        # segunda criança e exclusão
+        await B.click('[data-act=novaCrianca]'); await B.fill('input[name=nome]','Leo'); await B.click('button[type=submit]'); await idle(B)
+        await A.reload(); await idle(A); check(len((await st(A))['criancas'])==2,'Leo criado no B aparece no A')
+        await pais(B); await B.click('[data-act=abaPais] >> text=Leo'); await B.click('[data-act=pedeApagar]'); await B.click('[data-act=apagarCrianca]'); await idle(B)
+        await A.reload(); await idle(A); check([c['nome'] for c in (await st(A))['criancas']]==['Nina'],'Leo apagado no B some do A')
+        # sair
+        await pais(A); await A.click('[data-act=pedeSair]'); await A.click('[data-act=sairConta]'); await idle(A,500)
+        check((await st(A))['criancas']==[] and len(S.cri)==1,'sair limpa o aparelho e mantém a nuvem')
+        # excluir conta
+        await B.click('[data-act=pedeExcluir]'); await B.screenshot(path='/home/claude/pingo/test/v2_excluir.png',full_page=True); await B.click('[data-act=excluirConta]'); await idle(B,500)
+        check(len(S.cri)==0 and len(S.lic)==0 and not S.users,'excluir conta apaga tudo no servidor')
+        check(await B.locator('input[name=nome]').count()==1,'B volta para a tela inicial vazia')
+        print('erros JS:',errs)
+        await br.close()
+asyncio.run(main())
