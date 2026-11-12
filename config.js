@@ -3,8 +3,8 @@
 // A chave pública (anon/publishable) pode ficar aqui: quem protege os dados é a
 // Row Level Security do banco (supabase/schema.sql).
 window.PINGO_CONFIG = {
-  supabaseUrl: '',
-  supabaseAnonKey: '',
+  supabaseUrl: 'https://ndrykilaxdnxcitxnnsv.supabase.co',
+  supabaseAnonKey: 'sb_publishable_CbQ9BB0UE6Sn39tua4RNjg_Uv4A4T4O',
   contato: '',
   regiao: 'São Paulo, Brasil'
 };
