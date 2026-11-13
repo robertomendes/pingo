@@ -409,14 +409,17 @@ async function iniciarNuvem() {
   if (!NUVEM) return;
   if (NUVEM.aoMudar) NUVEM.aoMudar((ev, u) => {
     if (ev === 'PASSWORD_RECOVERY') { contaModo = 'novaSenha'; contaMsg = null; contaVolta = 'pais'; ir('conta'); return; }
-    if (ev === 'SIGNED_IN' && u && !(db.conta && db.conta.id === u.id && db.conta.ativa)) { conectar(u); if (['boasvindas', 'perfis', 'pais'].indexOf(tela) >= 0) render(); }
+    if (ev === 'SIGNED_IN' && u && !(db.conta && db.conta.id === u.id && db.conta.ativa)) { conectar(u); if (tela === 'conta') ir(telaInicial()); else if (['boasvindas', 'perfis', 'pais'].indexOf(tela) >= 0) render(); }
+    if (ev === 'SIGNED_OUT' && db.conta && db.conta.ativa) { db.conta.ativa = false; salvar(); if (tela !== 'folha') render(); }
   });
   try {
     const u = await NUVEM.sessao();
-    if (u) { if (!(db.conta && db.conta.id === u.id && db.conta.ativa)) conectar(u); else agendarSinc(0); }
-    else if (db.conta && db.conta.ativa) { db.conta.ativa = false; salvar(); atualizarSelo(); }
+    if (u) { const novo = !(db.conta && db.conta.id === u.id && db.conta.ativa); if (novo) conectar(u); else agendarSinc(0); if (novo && tela === 'conta') ir(telaInicial()); }
+    else if (db.conta && db.conta.ativa && navigator.onLine !== false) { db.conta.ativa = false; salvar(); if (tela !== 'folha') render(); }
   } catch (e) { if (db.conta) agendarSinc(0); }
 }
+function logado() { return !!(NUVEM && db.conta && db.conta.ativa); }
+function telaInicial() { return !logado() ? 'conta' : db.criancas.length ? (crianca() ? 'inicio' : 'perfis') : 'boasvindas'; }
 const HABILIDADES = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 const LICOES_POR_HAB = 2;
 const CORES = ['#FFE3C7', '#D9E4FF', '#D8F3E3', '#F6DDF0', '#FFF2B8'];
@@ -473,7 +476,7 @@ function avatar(c, extra) { return '<span class="avatar" style="background:' + c
 
 /* ---------- Navegação ---------- */
 const app = document.getElementById('app');
-let tela = db.criancas.length ? (crianca() ? 'inicio' : 'perfis') : 'boasvindas';
+let tela = telaInicial();
 let licao = null, fimInfo = null, desafio = null, paisAba = null, modal = null, confirmaApagar = false;
 let tracos = [], padTam = { w: 1, h: 1 };
 let contaModo = 'entrar', contaMsg = null, contaOcupado = false, contaVolta = 'pais', contaEmail = '', contaSenha = '', contaOk = false, confirmaSair = false, confirmaExcluir = false;
@@ -481,6 +484,11 @@ let contaModo = 'entrar', contaMsg = null, contaOcupado = false, contaVolta = 'p
 function ir(t) { tela = t; modal = null; render(); window.scrollTo(0, 0); }
 
 function render() {
+  if (!logado() && tela !== 'conta') { // sem login, nada além das telas de conta
+    if (db.conta && !db.conta.ativa && !contaMsg) { contaMsg = { t: 'Sua sessão expirou. Entre de novo para continuar.' }; contaEmail = contaEmail || db.conta.email || ''; }
+    if (['entrar', 'criar', 'recuperar', 'novaSenha', 'confirmar'].indexOf(contaModo) < 0) contaModo = 'entrar';
+    tela = 'conta'; licao = null; modal = null;
+  }
   document.body.className = tela === 'fim' ? 'fim' : (tela === 'pais' || tela === 'portao' ? 'pais' : '');
   app.innerHTML = (VIEWS[tela] || VIEWS.perfis)() + (modal ? modal() : '');
   if (tela === 'folha') montarPad();
@@ -494,7 +502,7 @@ VIEWS.boasvindas = function () {
   return '<main class="tela" style="justify-content:center;align-items:center;text-align:center;max-width:640px">' +
     mascote(150, 'claro') +
     '<h1>Oi! Eu sou o Pingo.</h1><p style="font-size:21px;font-weight:700;margin:0">Vamos praticar matemática um pouquinho por dia, escrevendo com o dedo ou a caneta.</p>' +
-    formPerfil(true) + (NUVEM ? '<button class="link-pais" data-act="abrirConta" data-m="entrar">Já uso o Pingo em outro aparelho: entrar na conta</button>' : '') + '</main>';
+    formPerfil(true) + '<button class="link-pais" data-act="abrirPais">' + IC.cadeado + 'Área dos pais (conta e sair)</button></main>';
 };
 
 function formPerfil(primeiro) {
@@ -589,9 +597,11 @@ VIEWS.fim = function () {
 };
 
 VIEWS.conta = function () {
-  if (!NUVEM) return '<main class="tela" style="max-width:560px;justify-content:center"><section class="cartao"><p>O backup na nuvem ainda não foi configurado neste endereço.</p><button class="btn btn-claro btn-pequeno" data-act="contaVoltar">Voltar</button></section></main>';
+  if (!NUVEM) return '<main class="tela" style="max-width:560px;justify-content:center"><section class="cartao"><h2>Pingo indisponível</h2><p style="font-size:18px;font-weight:600">Não foi possível conectar ao serviço de contas. Verifique a internet e abra o app de novo.</p></section></main>';
   const tit = { entrar: 'Entrar na conta', criar: 'Criar a conta do responsável', recuperar: 'Recuperar a senha', novaSenha: 'Criar uma senha nova', confirmar: 'Confirme seu e-mail' }[contaModo];
-  let h = '<main class="tela" style="max-width:560px;justify-content:center"><form class="cartao" data-form="conta" style="display:flex;flex-direction:column;gap:16px" novalidate><p class="rotulo">Área dos pais</p><h2>' + tit + '</h2>';
+  let h = '<main class="tela" style="max-width:560px;justify-content:center">' +
+    (logado() ? '' : '<div style="display:flex;align-items:center;gap:16px;margin-bottom:4px">' + mascote(84, 'claro') + '<div><h1 style="font-size:34px">Oi! Eu sou o Pingo.</h1><p style="margin:4px 0 0;font-size:18px;font-weight:700">Para começar, um adulto entra com a conta do responsável.</p></div></div>') +
+    '<form class="cartao" data-form="conta" style="display:flex;flex-direction:column;gap:16px" novalidate><p class="rotulo">Área dos pais</p><h2>' + tit + '</h2>';
   if (contaModo === 'confirmar') {
     h += '<p style="margin:0;font-size:18px;font-weight:700;line-height:1.45">Enviamos um link para <b>' + esc(contaEmail) + '</b>. Abra o e-mail, toque no link e depois volte aqui para entrar.</p>' +
       '<button class="btn btn-laranja" type="button" data-act="contaModo" data-m="entrar">Já confirmei, quero entrar</button>';
@@ -606,8 +616,16 @@ VIEWS.conta = function () {
     if (contaModo === 'entrar') h += '<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:16px"><button type="button" class="linkbtn" data-act="contaModo" data-m="criar" style="min-height:44px">Ainda não tenho conta</button><button type="button" class="linkbtn" data-act="contaModo" data-m="recuperar" style="min-height:44px">Esqueci a senha</button></div>';
     else if (contaModo !== 'novaSenha') h += '<button type="button" class="linkbtn" data-act="contaModo" data-m="entrar" style="min-height:44px;align-self:flex-start;font-size:16px">Já tenho conta</button>';
   }
-  return h + '<button class="btn btn-claro btn-pequeno" type="button" data-act="contaVoltar">Voltar</button></form></main>';
+  return h + (logado() ? '<button class="btn btn-claro btn-pequeno" type="button" data-act="contaVoltar">Voltar</button>' : '') + '</form></main>';
 };
+
+function modalSair() {
+  const p = pendentes();
+  return '<div class="modal" role="dialog" aria-modal="true" aria-label="Sair da conta"><div class="caixa" style="max-width:480px"><h2 style="font-size:24px">Sair da conta?</h2>' +
+    '<p style="margin:0;font-size:17px;font-weight:600;line-height:1.5">O progresso continua guardado na nuvem. Este aparelho fica sem dados até alguém entrar de novo.</p>' +
+    (p ? '<p class="erro-txt" style="margin:0">' + p + (p === 1 ? ' lição ainda não subiu para a nuvem. Vou tentar enviar antes de sair; sem internet, ela será perdida.' : ' lições ainda não subiram para a nuvem. Vou tentar enviar antes de sair; sem internet, elas serão perdidas.') + '</p>' : '') +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-perigo btn-pequeno" data-act="sairConta">Sair</button><button class="btn btn-claro btn-pequeno" data-act="fecharModal" data-foco>Cancelar</button></div></div></div>';
+}
 
 function modalPrivacidade() {
   const itens = [
@@ -662,9 +680,8 @@ function cartaoConta() {
     const p = pendentes();
     h += '<p style="margin:0;font-size:16px;font-weight:800">Conta: ' + esc(db.conta.email || '') + '</p><div style="display:flex;gap:10px;flex-wrap:wrap">' +
       (db.conta.ativa ? '<button class="btn btn-claro btn-pequeno" data-act="sincAgora">Sincronizar agora</button>' : '<button class="btn btn-laranja btn-pequeno" data-act="abrirConta" data-m="entrar">Entrar de novo</button>') +
-      (confirmaSair ? '<button class="btn btn-perigo btn-pequeno" data-act="sairConta">Confirmar saída</button><button class="btn btn-claro btn-pequeno" data-act="cancelaSair">Cancelar</button>' : '<button class="btn btn-claro btn-pequeno" data-act="pedeSair">Sair da conta</button>') +
+      '<button class="btn btn-claro btn-pequeno" data-act="pedeSair">Sair da conta</button>' +
       (confirmaExcluir ? '<button class="btn btn-perigo btn-pequeno" data-act="excluirConta">Confirmar: excluir a conta e todos os dados</button><button class="btn btn-claro btn-pequeno" data-act="cancelaExcluir">Cancelar</button>' : '<button class="btn btn-claro btn-pequeno" data-act="pedeExcluir">Excluir conta</button>') + '</div>';
-    if (confirmaSair) h += '<p class="peq" style="margin:0">Ao sair, os dados saem deste aparelho e continuam guardados na conta.' + (p ? ' Atenção: ' + p + (p === 1 ? ' lição ainda não foi enviada e será perdida.' : ' lições ainda não foram enviadas e serão perdidas.') : '') + '</p>';
     if (confirmaExcluir) h += '<p class="erro-txt" style="margin:0">Isso apaga para sempre a conta, as crianças e todas as lições, em todos os aparelhos.</p>';
   }
   return h + '<button class="linkbtn" data-act="privacidade" style="align-self:flex-start;min-height:44px;font-size:16px">Política de privacidade</button></section>';
@@ -673,7 +690,7 @@ function cartaoConta() {
 VIEWS.pais = function () {
   const c = db.criancas.find(x => x.id === paisAba) || db.criancas[0];
   let html = '<main class="tela"><div class="topo"><div class="marca" style="font-size:24px">' + gota(28) + 'Pingo <span style="font-weight:700;color:#4A5375">para pais</span></div>' +
-    '<button class="btn btn-claro btn-pequeno" data-act="voltarCrianca">Voltar para a criança</button></div>';
+    '<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-claro btn-pequeno" data-act="pedeSair">Sair da conta</button><button class="btn btn-claro btn-pequeno" data-act="voltarCrianca">Voltar para a criança</button></div></div>';
   if (!c) return html + '<section class="cartao"><p>Nenhuma criança cadastrada.</p><button class="btn btn-laranja" data-act="novaCrianca">Adicionar criança</button></section></main>';
   paisAba = c.id;
   html += '<div class="chips" role="tablist" aria-label="Crianças">' + db.criancas.map(x => '<button class="chip" role="tab" aria-selected="' + (x.id === c.id) + '" data-act="abaPais" data-id="' + x.id + '" style="padding:6px 16px 6px 6px;' + (x.id === c.id ? 'outline:3px solid #2F4BC7' : '') + '">' + avatar(x) + esc(x.nome) + '</button>').join('') +
@@ -843,7 +860,7 @@ const ACOES = {
   sair: () => { licao = null; tracos = []; ir('inicio'); },
   inicio: () => ir('inicio'),
   abrirPais: () => { const a = 6 + Math.floor(Math.random() * 4), b = 6 + Math.floor(Math.random() * 4); desafio = { a, b, erro: false }; ir('portao'); },
-  voltarCrianca: () => { confirmaApagar = false; ir(crianca() ? 'inicio' : (db.criancas.length ? 'perfis' : 'boasvindas')); },
+  voltarCrianca: () => { confirmaApagar = false; ir(telaInicial()); },
   abaPais: d => { paisAba = d.id; confirmaApagar = false; render(); },
   novaCrianca: () => ir('novo'),
   replay: d => abrirReplay(d.id),
@@ -855,16 +872,21 @@ const ACOES = {
   cancelaApagar: () => { confirmaApagar = false; render(); },
   abrirConta: d => { contaModo = d.m || 'entrar'; contaMsg = null; contaSenha = ''; contaOk = false; contaVolta = tela === 'pais' ? 'pais' : 'inicio'; ir('conta'); },
   contaModo: d => { guardarForm(); contaModo = d.m; contaMsg = null; render(); },
-  contaVoltar: () => { contaMsg = null; contaSenha = ''; if (contaVolta === 'pais' && db.criancas.length) ir('pais'); else ir(db.criancas.length ? (crianca() ? 'inicio' : 'perfis') : 'boasvindas'); },
+  contaVoltar: () => { contaMsg = null; contaSenha = ''; if (contaVolta === 'pais' && db.criancas.length && logado()) ir('pais'); else ir(telaInicial()); },
   privacidade: () => { guardarForm(); modal = modalPrivacidade; render(); },
   sincAgora: () => { sincronizar(); atualizarSelo(); },
-  pedeSair: () => { confirmaSair = true; confirmaExcluir = false; render(); },
+  pedeSair: () => { confirmaExcluir = false; modal = modalSair; render(); },
   cancelaSair: () => { confirmaSair = false; render(); },
-  sairConta: async () => { try { if (NUVEM) await NUVEM.sair(); } catch (e) { } limparAparelho(); confirmaSair = false; ir('boasvindas'); },
+  sairConta: async () => {
+    const b = app.querySelector('[data-act=sairConta]'); if (b) { b.disabled = true; b.textContent = 'Saindo…'; }
+    if (pendentes() && navigator.onLine !== false) { try { await sincronizar(); } catch (e) { } }
+    try { if (NUVEM) await NUVEM.sair(); } catch (e) { }
+    limparAparelho(); modal = null; contaModo = 'entrar'; contaSenha = ''; contaMsg = { ok: true, t: 'Você saiu da conta. O progresso continua guardado na nuvem.' }; ir('conta');
+  },
   pedeExcluir: () => { confirmaExcluir = true; confirmaSair = false; render(); },
   cancelaExcluir: () => { confirmaExcluir = false; render(); },
   excluirConta: async () => {
-    try { await NUVEM.excluirConta(); limparAparelho(); confirmaExcluir = false; ir('boasvindas'); }
+    try { await NUVEM.excluirConta(); limparAparelho(); confirmaExcluir = false; contaModo = 'entrar'; contaEmail = ''; contaMsg = { ok: true, t: 'Conta excluída. Todos os dados foram apagados.' }; ir('conta'); }
     catch (e) { db.erroSinc = traduzErro(e); db.estadoSinc = 'erro'; confirmaExcluir = false; render(); }
   },
   apagarCrianca: () => { const ap = db.criancas.find(x => x.id === paisAba); if (ap && ap.sinc) db.apagadas.push(ap.id); agendarSinc(0); db.criancas = db.criancas.filter(x => x.id !== paisAba); if (db.ativa === paisAba) db.ativa = null; paisAba = null; confirmaApagar = false; salvar(); db.criancas.length ? render() : ir('boasvindas'); }
@@ -888,7 +910,7 @@ async function enviarConta(fd) {
     else if (contaModo === 'novaSenha') { await NUVEM.novaSenha(senha); const u = await NUVEM.sessao(); if (u) { conectar(u, true); entrou = true; } }
   } catch (e) { contaMsg = { t: traduzErro(e) }; }
   contaOcupado = false; contaSenha = '';
-  if (entrou) { await sincronizar(); contaMsg = null; if (contaVolta === 'pais' && db.criancas.length) { paisAba = db.ativa && crianca() ? db.ativa : db.criancas[0].id; ir('pais'); } else ir(db.criancas.length ? (crianca() ? 'inicio' : 'perfis') : 'boasvindas'); return; }
+  if (entrou) { await sincronizar(); contaMsg = null; ir(telaInicial()); return; }
   if (tela === 'conta') render();
 }
 function aviso(m) { licao.status = 'aviso'; licao.msg = m; render(); const q = app.querySelector('.quadro'); if (q) q.classList.add('balanca'); }

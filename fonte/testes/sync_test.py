@@ -45,12 +45,12 @@ class Server:
             s.users={e:u for e,u in s.users.items() if u['id']!=uid}; s.toks={t:u for t,u in s.toks.items() if u!=uid}; return {'ok':None}
         return {'erro':'op?'}
 MOCK_JS='''window.PINGO_BACKEND=(function(){const call=async(op,args)=>{const r=JSON.parse(await window.mockServer(op,JSON.stringify(args||{}),localStorage.getItem('mock.tok')||''));if(r.erro){const e=new Error(r.erro);e.status=r.status;throw e;}return r.ok;};
-return{sessao:async()=>{if(!localStorage.getItem('mock.tok'))return null;try{return await call('sessao')}catch(e){return null}},aoMudar:()=>{},
-criarConta:async(email,senha)=>{const r=await call('criar',{email,senha});localStorage.setItem('mock.tok',r.tok);return{usuario:r.u,confirmar:false}},
-entrar:async(email,senha)=>{const r=await call('entrar',{email,senha});localStorage.setItem('mock.tok',r.tok);return r.u},
-sair:async()=>{localStorage.removeItem('mock.tok')},recuperar:async()=>{},novaSenha:async()=>{},
+return{sessao:async()=>{const u=localStorage.getItem('mock.user');return localStorage.getItem('mock.tok')&&u?JSON.parse(u):null},aoMudar:()=>{},
+criarConta:async(email,senha)=>{const r=await call('criar',{email,senha});localStorage.setItem('mock.tok',r.tok);localStorage.setItem('mock.user',JSON.stringify(r.u));return{usuario:r.u,confirmar:false}},
+entrar:async(email,senha)=>{const r=await call('entrar',{email,senha});localStorage.setItem('mock.tok',r.tok);localStorage.setItem('mock.user',JSON.stringify(r.u));return r.u},
+sair:async()=>{localStorage.removeItem('mock.tok');localStorage.removeItem('mock.user')},recuperar:async()=>{},novaSenha:async()=>{},
 baixar:c=>call('baixar',{cursor:c}),enviarCriancas:rows=>call('upC',{rows}),enviarLicoes:rows=>call('upL',{rows}),apagarCriancas:ids=>call('delC',{ids}),
-excluirConta:async()=>{await call('excluir');localStorage.removeItem('mock.tok')}}})();'''
+excluirConta:async()=>{await call('excluir');localStorage.removeItem('mock.tok');localStorage.removeItem('mock.user')}}})();'''
 S=Server(); errs=[]
 async def device(br,name):
     ctx=await br.new_context(viewport={'width':1180,'height':820},service_workers='block')
@@ -83,16 +83,21 @@ async def main():
     async with async_playwright() as p:
         br=await p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--no-sandbox'])
         A=await device(br,'A')
-        await A.fill('input[name=nome]','Nina'); await A.check('input[name=ok]'); await A.click('button[type=submit]')
-        await lesson(A)
-        check(len(S.calls)==0,'sem conta: nada vai para o servidor')
-        await pais(A); await A.click('[data-act=abrirConta][data-m=criar]')
-        await A.fill('input[name=email]','pai@x.com'); await A.fill('input[name=senha]','12345678'); await A.check('input[name=ok]'); await A.click('button[type=submit]'); await idle(A)
-        check(len(S.cri)==1 and len(S.lic)==1,'A criou conta: criança e lição antiga subiram (%d,%d)'%(len(S.cri),len(S.lic)))
-        selo=await A.locator('#selo-sinc').inner_text(); check('Backup em dia' in selo,'selo: '+selo)
-        await A.screenshot(path='/home/claude/pingo/test/v2_pais_conta.png',full_page=True)
+        check(await A.locator('form[data-form=conta]').count()==1 and await A.locator('[data-act=comecar]').count()==0,'sem login: só aparece a tela de conta')
+        check(await A.locator('[data-act=contaVoltar]').count()==0,'sem login: não há botão Voltar para escapar')
+        await A.click('[data-act=contaModo][data-m=criar]')
+        await A.fill('input[name=email]','pai@x.com'); await A.fill('input[name=senha]','12345678'); await A.click('button[type=submit]'); await idle(A,400)
+        check('confirmação' in await A.locator('[role=alert]').inner_text(),'criar conta exige marcar a confirmação de responsável')
+        await A.check('input[name=ok]'); await A.click('button[type=submit]'); await idle(A)
+        await A.fill('input[name=nome]','Nina'); await A.click('form[data-form=perfil] button[type=submit]')
+        check(await A.locator('input[name=ok]').count()==0,'consentimento não é pedido de novo')
+        await lesson(A); await idle(A)
+        check(len(S.cri)==1 and len(S.lic)==1,'A criou conta, criança e lição na nuvem (%d,%d)'%(len(S.cri),len(S.lic)))
+        await pais(A); selo=await A.locator('#selo-sinc').inner_text(); check('Backup em dia' in selo,'selo: '+selo)
+        await A.screenshot(path='/home/claude/pingo/test/v3_pais.png',full_page=True)
+        await A.click('[data-act=voltarCrianca]')
         B=await device(br,'B')
-        await B.click('[data-act=abrirConta][data-m=entrar]'); await B.fill('input[name=email]','pai@x.com'); await B.fill('input[name=senha]','errada12'); await B.click('button[type=submit]'); await idle(B,500)
+        await B.fill('input[name=email]','pai@x.com'); await B.fill('input[name=senha]','errada12'); await B.click('button[type=submit]'); await idle(B,500)
         check('incorretos' in await B.locator('[role=alert]').inner_text(),'senha errada mostra erro em português')
         await B.fill('input[name=senha]','12345678'); await B.click('button[type=submit]'); await idle(B)
         check(await B.locator('.perfil').count()==1,'B entrou e vê a Nina')
@@ -121,12 +126,27 @@ async def main():
         await pais(B); await B.click('[data-act=abaPais] >> text=Leo'); await B.click('[data-act=pedeApagar]'); await B.click('[data-act=apagarCrianca]'); await idle(B)
         await A.reload(); await idle(A); check([c['nome'] for c in (await st(A))['criancas']]==['Nina'],'Leo apagado no B some do A')
         # sair
-        await pais(A); await A.click('[data-act=pedeSair]'); await A.click('[data-act=sairConta]'); await idle(A,500)
+        # sessão expirada: dados ficam, mas o app tranca até entrar de novo
+        await A.evaluate("localStorage.removeItem('mock.tok');localStorage.removeItem('mock.user')"); await A.reload(); await idle(A)
+        check(await A.locator('form[data-form=conta]').count()==1 and 'expirou' in await A.locator('[role=alert]').inner_text(),'sessão expirada tranca o app com aviso')
+        check(len((await st(A))['criancas'])==1,'sessão expirada não apaga os dados do aparelho')
+        await A.fill('input[name=senha]','12345678'); await A.click('button[type=submit]'); await idle(A)
+        check(await A.locator('[data-act=comecar]').count()+await A.locator('.perfil').count()>0,'entrar de novo libera o app')
+        # offline com sessão válida: criança continua praticando
+        S.offline.add('A'); await A.reload(); await idle(A)
+        check(await A.locator('form[data-form=conta]').count()==0,'sem internet, com sessão salva, o app abre normalmente')
+        S.offline.discard('A')
+        # logoff pelo topo da área dos pais
+        await pais(A); await A.click('[data-act=pedeSair] >> nth=0'); await A.screenshot(path='/home/claude/pingo/test/v3_sair.png')
+        await A.click('[data-act=sairConta]'); await idle(A,800)
         check((await st(A))['criancas']==[] and len(S.cri)==1,'sair limpa o aparelho e mantém a nuvem')
+        check(await A.locator('form[data-form=conta]').count()==1 and 'saiu' in await A.locator('[role=alert]').inner_text(),'depois de sair: tela de login com aviso')
+        await A.reload(); await idle(A,500)
+        check(await A.locator('[data-act=comecar]').count()==0 and await A.locator('.perfil').count()==0,'depois de sair, recarregar não dá acesso')
         # excluir conta
         await B.click('[data-act=pedeExcluir]'); await B.screenshot(path='/home/claude/pingo/test/v2_excluir.png',full_page=True); await B.click('[data-act=excluirConta]'); await idle(B,500)
         check(len(S.cri)==0 and len(S.lic)==0 and not S.users,'excluir conta apaga tudo no servidor')
-        check(await B.locator('input[name=nome]').count()==1,'B volta para a tela inicial vazia')
+        check(await B.locator('form[data-form=conta]').count()==1,'B volta para a tela de login')
         print('erros JS:',errs)
         await br.close()
 asyncio.run(main())

@@ -2,7 +2,7 @@
 
 App de prática diária para crianças de 4 a 10 anos: a criança escreve a resposta com o dedo ou a caneta e o app corrige na hora, com reconhecimento de dígitos rodando no próprio aparelho.
 
-**v0.2** — conta do responsável, backup na nuvem e sincronização entre aparelhos (offline-first).
+**v0.3** — acesso só com a conta do responsável (login obrigatório), logoff, backup na nuvem e sincronização entre aparelhos (offline-first).
 
 ## Arquivos
 
@@ -28,4 +28,6 @@ App de prática diária para crianças de 4 a 10 anos: a criança escreve a resp
 - Lições só se somam (nunca conflitam). Estrelas e dias seguidos são recalculados a partir delas.
 - Progresso na trilha: vale o mais avançado, a menos que alguém tenha usado "Recomeçar a trilha" depois.
 - Nome, cor e modo teclado: vale a alteração mais recente.
-- Sair da conta limpa o aparelho (os dados continuam na nuvem). Excluir a conta apaga tudo, em cascata.
+- Sem login, o app mostra só as telas de conta. Com a sessão salva, abre mesmo sem internet.
+- Sessão expirada tranca o app até entrar de novo, sem apagar o que está no aparelho.
+- Sair da conta (Área dos pais) limpa o aparelho (os dados continuam na nuvem). Excluir a conta apaga tudo, em cascata.
