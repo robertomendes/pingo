@@ -2,7 +2,13 @@ import asyncio, json, re, itertools, datetime
 from playwright.async_api import async_playwright
 BASE='http://localhost:8766/'
 class Server:
-    def __init__(s): s.users={}; s.toks={}; s.cri={}; s.lic=[]; s.offline=set(); s.clock=itertools.count(1); s.PAG=3; s.calls=[]
+    def __init__(s): s.users={}; s.toks={}; s.cri={}; s.lic=[]; s.offline=set(); s.clock=itertools.count(1); s.PAG=3; s.calls=[]; s.assin={}; s.admins=set(); s.config={'preco_centavos':4990,'dias_teste':7,'vendas_abertas':True,'modo':'teste'}; s.checkouts=0
+    def tem(s,uid):
+        a=s.assin.get(uid) or {}
+        if uid in s.admins: return True
+        if a.get('status') in ('active','trialing'): return True
+        if a.get('status')=='past_due' and a.get('periodo_fim','')> (datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(days=10)).isoformat(): return True
+        return False
     def ts(s): return (datetime.datetime(2026,11,12,tzinfo=datetime.timezone.utc)+datetime.timedelta(seconds=next(s.clock))).isoformat()
     def handle(s, dev, op, args, tok):
         s.calls.append((dev,op))
@@ -23,6 +29,24 @@ class Server:
             cs=[{k:v for k,v in c.items() if k!='dono'} for c in s.cri.values() if c['dono']==uid]
             ls=[l for l in s.lic if l['dono']==uid and (not a.get('cursor') or l['recebido_em']>a['cursor'])][:s.PAG]
             return {'ok':{'criancas':cs,'licoes':[{k:v for k,v in l.items() if k!='dono'} for l in ls],'pagina':s.PAG}}
+        if op=='cobranca': return {'ok':{'assin':s.assin.get(uid),'config':s.config,'admin':uid in s.admins}}
+        if op=='funcao':
+            nome=a['nome']; c=a['corpo']; acao=c.get('acao')
+            if nome=='assinatura' and acao=='checkout':
+                if not s.config['vendas_abertas']: return {'erro':'As assinaturas ainda não estão abertas.','status':409}
+                s.checkouts+=1; fim=(datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(days=7)).isoformat()
+                s.assin[uid]={'status':'trialing','preco_centavos':s.config['preco_centavos'],'periodo_fim':fim,'teste_fim':fim,'cancelar_no_fim':False,'ja_teve_teste':True}
+                return {'ok':{'url':'http://localhost:8766/?assinatura=ok'}}
+            if nome=='assinatura' and acao=='sincronizar': return {'ok':{'status':(s.assin.get(uid) or {}).get('status','nenhuma')}}
+            if nome=='assinatura' and acao=='portal': return {'ok':{'url':'http://localhost:8766/#portal'}}
+            if nome=='assinatura' and acao=='excluir_conta': return s.handle(dev,'excluir','{}',tok)
+            if nome=='admin-cobranca':
+                if uid not in s.admins: return {'erro':'Acesso só para administradores.','status':403}
+                if acao=='salvar': s.config.update(preco_centavos=c['preco_centavos'],dias_teste=c['dias_teste'],vendas_abertas=c['vendas_abertas']); s.ultimo_salvar=c
+                n=lambda st: sum(1 for x in s.assin.values() if x.get('status')==st)
+                return {'ok':{'config':dict(s.config),'stripe':{'chave':True,'modoChave':'teste','conectada':True},'numeros':{'ativos':n('active'),'em_teste':n('trialing'),'pendentes':n('past_due'),'cancelados':n('canceled'),'mrr_centavos':sum(x['preco_centavos'] for x in s.assin.values() if x.get('status')=='active')},'migrados':0,'falhas':0}}
+            return {'erro':'acao?'}
+        if op in ('upC','upL') and not s.tem(uid): return {'erro':'new row violates row-level security policy'}
         if op=='upC':
             for r in a['rows']:
                 ex=s.cri.get(r['id'])
@@ -50,7 +74,8 @@ criarConta:async(email,senha)=>{const r=await call('criar',{email,senha});localS
 entrar:async(email,senha)=>{const r=await call('entrar',{email,senha});localStorage.setItem('mock.tok',r.tok);localStorage.setItem('mock.user',JSON.stringify(r.u));return r.u},
 sair:async()=>{localStorage.removeItem('mock.tok');localStorage.removeItem('mock.user')},recuperar:async()=>{},novaSenha:async()=>{},
 baixar:c=>call('baixar',{cursor:c}),enviarCriancas:rows=>call('upC',{rows}),enviarLicoes:rows=>call('upL',{rows}),apagarCriancas:ids=>call('delC',{ids}),
-excluirConta:async()=>{await call('excluir');localStorage.removeItem('mock.tok');localStorage.removeItem('mock.user')}}})();'''
+excluirConta:async()=>{await call('funcao',{nome:'assinatura',corpo:{acao:'excluir_conta'}});localStorage.removeItem('mock.tok');localStorage.removeItem('mock.user')},
+cobranca:()=>call('cobranca'),funcao:async(nome,corpo)=>{try{return await call('funcao',{nome,corpo})}catch(e){e.daFuncao=true;throw e}}}})();'''
 S=Server(); errs=[]
 async def device(br,name):
     ctx=await br.new_context(viewport={'width':1180,'height':820},service_workers='block')
@@ -89,6 +114,14 @@ async def main():
         await A.fill('input[name=email]','pai@x.com'); await A.fill('input[name=senha]','12345678'); await A.click('button[type=submit]'); await idle(A,400)
         check('confirmação' in await A.locator('[role=alert]').inner_text(),'criar conta exige marcar a confirmação de responsável')
         await A.check('input[name=ok]'); await A.click('button[type=submit]'); await idle(A)
+        t=await A.locator('main').inner_text()
+        check('Assine o Pingo' in t and 'R$ 49,90' in t and '7 dias grátis' in t,'conta nova sem assinatura vê a oferta com preço e teste grátis')
+        await A.screenshot(path='/home/claude/pingo/test/v4_assinar.png',full_page=True)
+        await A.evaluate("PINGO_TEST.db.criancas"); 
+        await A.click('[data-act=assinar]'); await A.wait_for_url('**/pingo/**',timeout=3000) if False else None
+        await idle(A,2500)
+        check(await A.locator('input[name=nome]').count()==1,'depois do pagamento confirmado, o app libera o cadastro da criança')
+        check('assinatura=' not in A.url,'o endereço de retorno é limpo')
         await A.fill('input[name=nome]','Nina'); await A.click('form[data-form=perfil] button[type=submit]')
         check(await A.locator('input[name=ok]').count()==0,'consentimento não é pedido de novo')
         await lesson(A); await idle(A)
@@ -136,6 +169,32 @@ async def main():
         S.offline.add('A'); await A.reload(); await idle(A)
         check(await A.locator('form[data-form=conta]').count()==0,'sem internet, com sessão salva, o app abre normalmente')
         S.offline.discard('A')
+        # assinatura: pendente dentro da tolerância, vencida, cancelada, vendas fechadas, admin
+        await pais(A); t=await A.locator('main').inner_text(); check('Teste grátis até' in t,'área dos pais mostra a assinatura em teste')
+        await A.click('[data-act=voltarCrianca]')
+        uid=S.users['pai@x.com']['id']; hoje=datetime.datetime.now(datetime.timezone.utc)
+        S.assin[uid]={'status':'past_due','preco_centavos':4990,'periodo_fim':(hoje-datetime.timedelta(days=2)).isoformat(),'cancelar_no_fim':False,'ja_teve_teste':True}
+        await A.reload(); await idle(A); check(await A.locator('form[data-form=conta]').count()==0 and await A.locator('[data-act=assinar]').count()==0,'pagamento pendente há 2 dias: acesso mantido')
+        S.assin[uid]['periodo_fim']=(hoje-datetime.timedelta(days=15)).isoformat()
+        await A.reload(); await idle(A); t=await A.locator('main').inner_text()
+        check('Pagamento pendente' in t and await A.locator('[data-act=portal]').count()==1,'pendente há 15 dias: bloqueia e oferece atualizar o cartão')
+        S.assin[uid]['status']='canceled'
+        await A.reload(); await idle(A); t=await A.locator('main').inner_text()
+        check('Sua assinatura terminou' in t and 'grátis' not in t,'assinatura encerrada: oferece assinar de novo, sem novo teste grátis')
+        S.config['vendas_abertas']=False; await A.reload(); await idle(A)
+        check('em breve' in await A.locator('main').inner_text(),'vendas fechadas: aviso de em breve')
+        S.admins.add(uid); await A.reload(); await idle(A)
+        check(await A.locator('[data-act=assinar]').count()==0 and await A.locator('form[data-form=conta]').count()==0,'administrador entra sem assinatura')
+        await pais(A); await A.click('[data-act=abrirAdmin]'); await idle(A,600)
+        await A.screenshot(path='/home/claude/pingo/test/v4_admin.png',full_page=True)
+        await A.fill('input[name=preco]','39,90'); await A.fill('input[name=dias]','14'); await A.check('input[name=abertas]'); await A.click('form[data-form=admin] button[type=submit]'); await idle(A,600)
+        check(S.config['preco_centavos']==3990 and S.config['dias_teste']==14 and S.config['vendas_abertas'],'admin salva R$ 39,90, 14 dias e abre as vendas')
+        check('Salvo' in await A.locator('[role=alert]').inner_text(),'admin vê confirmação')
+        await A.fill('input[name=preco]','abc'); await A.click('form[data-form=admin] button[type=submit]'); await idle(A,300)
+        check('inválido' in await A.locator('[role=alert]').inner_text() and S.config['preco_centavos']==3990,'preço inválido é recusado no app')
+        await A.click('[data-act=voltarPais]'); await A.click('[data-act=voltarCrianca]')
+        S.admins.discard(uid); S.assin[uid]={'status':'active','preco_centavos':4990,'periodo_fim':(hoje+datetime.timedelta(days=20)).isoformat(),'cancelar_no_fim':False,'ja_teve_teste':True}
+        await A.reload(); await idle(A)
         # logoff pelo topo da área dos pais
         await pais(A); await A.click('[data-act=pedeSair] >> nth=0'); await A.screenshot(path='/home/claude/pingo/test/v3_sair.png')
         await A.click('[data-act=sairConta]'); await idle(A,800)

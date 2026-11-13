@@ -280,7 +280,26 @@ const NUVEM = (function () {
     enviarCriancas: async rows => { if (rows.length) ok(await sb.from('criancas').upsert(rows, { onConflict: 'id' })); },
     enviarLicoes: async rows => { if (rows.length) ok(await sb.from('licoes').upsert(rows, { onConflict: 'id', ignoreDuplicates: true })); },
     apagarCriancas: async ids => { if (ids.length) ok(await sb.from('criancas').delete().in('id', ids)); },
-    excluirConta: async () => { ok(await sb.rpc('excluir_conta')); await sb.auth.signOut({ scope: 'local' }); }
+    cobranca: async () => {
+      const a = await sb.from('assinaturas').select('status,preco_centavos,periodo_fim,teste_fim,cancelar_no_fim,ja_teve_teste').maybeSingle();
+      const c = await sb.from('config_cobranca').select('preco_centavos,dias_teste,vendas_abertas,modo').eq('id', 1).maybeSingle();
+      const adm = await sb.rpc('sou_admin');
+      return { assin: ok(a), config: ok(c), admin: !!ok(adm) };
+    },
+    funcao: async (nome, corpo) => {
+      const r = await sb.functions.invoke(nome, { body: corpo });
+      if (r.error) {
+        let m = r.error.message || 'Falha';
+        try { const j = await r.error.context.json(); if (j && j.erro) m = j.erro; } catch (e) { }
+        const er = new Error(m); er.status = r.error.context && r.error.context.status; er.daFuncao = true; throw er;
+      }
+      return r.data;
+    },
+    excluirConta: async () => {
+      const r = await sb.functions.invoke('assinatura', { body: { acao: 'excluir_conta' } });
+      if (r.error) { let m = r.error.message; try { const j = await r.error.context.json(); if (j && j.erro) m = j.erro; } catch (e) { } throw new Error(m); }
+      await sb.auth.signOut({ scope: 'local' });
+    }
   };
 })();
 
@@ -332,7 +351,8 @@ function sincronizar() {
 async function rodarSinc() {
   if (navigator.onLine === false) { db.estadoSinc = 'offline'; atualizarSelo(); return; }
   sinc.rodando = true; db.estadoSinc = 'sincronizando'; atualizarSelo();
-  let mudou = false;
+  let mudou = false; const acessoAntes = temAcesso();
+  await atualizarCobranca();
   try {
     if (db.apagadas.length) { const ids = db.apagadas.slice(); await NUVEM.apagarCriancas(ids); db.apagadas = db.apagadas.filter(x => ids.indexOf(x) < 0); }
     let cursor = db.cursor ? new Date(Date.parse(db.cursor) - 120000).toISOString() : null, remotas = null, novas = [];
@@ -345,6 +365,7 @@ async function rodarSinc() {
     }
     mudou = mesclar(remotas, novas);
     if (novas.length) { const ult = novas[novas.length - 1].recebido_em; if (!db.cursor || Date.parse(ult) > Date.parse(db.cursor)) db.cursor = ult; }
+    if (!temAcesso()) throw Object.assign(new Error('Assinatura inativa: o progresso fica guardado neste aparelho até a assinatura ser renovada.'), { semAcesso: true });
     const sujas = db.criancas.filter(c => c.sujo || !c.sinc);
     await NUVEM.enviarCriancas(sujas.map(linhaCrianca));
     sujas.forEach(c => { c.sujo = false; c.sinc = true; });
@@ -357,12 +378,13 @@ async function rodarSinc() {
     }
     db.ultimaSinc = Date.now(); db.erroSinc = null; db.estadoSinc = 'ok';
   } catch (e) {
-    db.erroSinc = traduzErro(e); db.estadoSinc = 'erro';
+    db.erroSinc = e && e.semAcesso ? e.message : traduzErro(e); db.estadoSinc = 'erro';
     if (e && (e.status === 401 || e.code === 'PGRST301' || /JWT|token/i.test(e.message || ''))) db.conta.ativa = false;
   } finally {
     sinc.rodando = false; salvar();
     const digitando = document.activeElement && document.activeElement.tagName === 'INPUT';
-    if (mudou && ['perfis', 'inicio', 'pais', 'boasvindas'].indexOf(tela) >= 0 && !digitando && !modal) {
+    if (acessoAntes !== temAcesso() && tela !== 'folha' && !digitando) { sinc.rodando = false; ir(telaInicial()); }
+    else if (mudou && ['perfis', 'inicio', 'pais', 'boasvindas'].indexOf(tela) >= 0 && !digitando && !modal) {
       if (tela === 'boasvindas' && db.criancas.length) tela = crianca() ? 'inicio' : 'perfis';
       render();
     } else atualizarSelo();
@@ -414,12 +436,55 @@ async function iniciarNuvem() {
   });
   try {
     const u = await NUVEM.sessao();
-    if (u) { const novo = !(db.conta && db.conta.id === u.id && db.conta.ativa); if (novo) conectar(u); else agendarSinc(0); if (novo && tela === 'conta') ir(telaInicial()); }
+    if (u) {
+      const novo = !(db.conta && db.conta.id === u.id && db.conta.ativa); if (novo) conectar(u); else agendarSinc(0);
+      const antes = tela; await atualizarCobranca();
+      if (antes === tela && (tela === 'conta' || tela === 'assinar' || !temAcesso())) ir(telaInicial());
+    }
     else if (db.conta && db.conta.ativa && navigator.onLine !== false) { db.conta.ativa = false; salvar(); if (tela !== 'folha') render(); }
   } catch (e) { if (db.conta) agendarSinc(0); }
 }
 function logado() { return !!(NUVEM && db.conta && db.conta.ativa); }
-function telaInicial() { return !logado() ? 'conta' : db.criancas.length ? (crianca() ? 'inicio' : 'perfis') : 'boasvindas'; }
+function temAcesso() { // espelha public.tem_acesso() do banco
+  if (!logado() || !db.cobranca) return false;
+  if (db.cobranca.admin) return true;
+  const a = db.cobranca.assin; if (!a) return false;
+  const fim = a.periodo_fim ? Date.parse(a.periodo_fim) : null, dia = 86400000;
+  if ((a.status === 'active' || a.status === 'trialing') && (fim === null || fim > Date.now() - 3 * dia)) return true;
+  return a.status === 'past_due' && !!fim && fim > Date.now() - 10 * dia;
+}
+function telaInicial() { return !logado() ? 'conta' : !temAcesso() ? 'assinar' : db.criancas.length ? (crianca() ? 'inicio' : 'perfis') : 'boasvindas'; }
+async function atualizarCobranca() {
+  if (!NUVEM || !logado() || !NUVEM.cobranca) return;
+  try { db.cobranca = Object.assign(await NUVEM.cobranca(), { em: Date.now() }); salvar(); } catch (e) { /* sem internet: vale o último status */ }
+}
+function reais(c) { return 'R$ ' + (Number(c || 0) / 100).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+function dataCurta(iso) { if (!iso) return ''; const d = new Date(iso); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); }
+const espera = ms => new Promise(r => setTimeout(r, ms));
+
+/* ---------- Retorno da página de pagamento ---------- */
+let pagamento = { estado: null, msg: null };
+function checarRetornoPagamento() {
+  let v = null;
+  try { v = new URLSearchParams(location.search).get('assinatura'); } catch (e) { }
+  if (!v) return;
+  try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) { }
+  if (v === 'ok') { pagamento = { estado: 'confirmando', msg: null }; confirmarPagamento(); }
+  else pagamento = { estado: null, msg: 'Pagamento não concluído. Você pode tentar de novo quando quiser.', neutro: true };
+}
+async function confirmarPagamento() {
+  pagamento = { estado: 'confirmando', msg: null }; if (tela === 'assinar') render();
+  for (let i = 0; i < 14; i++) {
+    if (logado()) {
+      try { await NUVEM.funcao('assinatura', { acao: 'sincronizar' }); } catch (e) { }
+      await atualizarCobranca();
+      if (temAcesso()) { pagamento = { estado: null, msg: null, ok: true }; agendarSinc(0); ir(telaInicial()); falar('Assinatura confirmada! Vamos praticar?'); return; }
+    }
+    await espera(2500);
+  }
+  pagamento = { estado: null, msg: 'Ainda não recebemos a confirmação da Stripe. Se o pagamento foi aprovado, o acesso libera em instantes.', verificar: true };
+  if (tela === 'assinar') render();
+}
 const HABILIDADES = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 const LICOES_POR_HAB = 2;
 const CORES = ['#FFE3C7', '#D9E4FF', '#D8F3E3', '#F6DDF0', '#FFF2B8'];
@@ -488,8 +553,10 @@ function render() {
     if (db.conta && !db.conta.ativa && !contaMsg) { contaMsg = { t: 'Sua sessão expirou. Entre de novo para continuar.' }; contaEmail = contaEmail || db.conta.email || ''; }
     if (['entrar', 'criar', 'recuperar', 'novaSenha', 'confirmar'].indexOf(contaModo) < 0) contaModo = 'entrar';
     tela = 'conta'; licao = null; modal = null;
+  } else if (logado() && !temAcesso() && tela !== 'assinar' && tela !== 'conta') { // sem assinatura em dia, só a tela de assinar
+    tela = 'assinar'; licao = null;
   }
-  document.body.className = tela === 'fim' ? 'fim' : (tela === 'pais' || tela === 'portao' ? 'pais' : '');
+  document.body.className = tela === 'fim' ? 'fim' : (['pais', 'portao', 'admin'].indexOf(tela) >= 0 ? 'pais' : '');
   app.innerHTML = (VIEWS[tela] || VIEWS.perfis)() + (modal ? modal() : '');
   if (tela === 'folha') montarPad();
   if (modal && modal.depois) modal.depois();
@@ -641,6 +708,102 @@ function modalPrivacidade() {
     '<p class="peq" style="margin:0">Resumo para a fase de piloto.</p></div></div>';
 }
 
+VIEWS.assinar = function () {
+  const c = db.cobranca, cfg = c && c.config, a = c && c.assin;
+  let h = '<main class="tela" style="max-width:640px;justify-content:center">';
+  const topo = (tit, sub) => '<div style="display:flex;align-items:center;gap:16px">' + mascote(96, 'claro') + '<div><h1 style="font-size:36px">' + tit + '</h1>' + (sub ? '<p style="margin:6px 0 0;font-size:18px;font-weight:700">' + sub + '</p>' : '') + '</div></div>';
+  let cartao = '';
+  if (pagamento.estado === 'confirmando') {
+    h += topo('Quase lá!', 'Confirmando seu pagamento com a Stripe…');
+    cartao = '<p class="instrucao" role="status">Isso leva alguns segundos. Não feche o app.</p>';
+  } else if (!c) {
+    h += topo('Só um instante', 'Verificando a assinatura…');
+    cartao = '<p class="instrucao" role="status">Se demorar, confira a internet.</p><button class="btn btn-claro btn-pequeno" data-act="verificarAssinatura">Tentar de novo</button>';
+  } else if (a && (a.status === 'past_due' || a.status === 'unpaid')) {
+    h += topo('Pagamento pendente', 'Não conseguimos cobrar o cartão cadastrado.');
+    cartao = '<p style="margin:0;font-size:17px;font-weight:600;line-height:1.5">Atualize a forma de pagamento para a criança continuar praticando. O progresso está guardado.</p>' +
+      '<button class="btn btn-laranja" data-act="portal"' + (pagamento.estado === 'indo' ? ' disabled' : '') + '>' + (pagamento.estado === 'indo' ? 'Abrindo…' : 'Atualizar cartão') + '</button>';
+  } else if (!cfg || !cfg.vendas_abertas) {
+    h += topo('Assinaturas em breve', 'O Pingo está quase pronto para novas famílias.');
+    cartao = '<p style="margin:0;font-size:17px;font-weight:600;line-height:1.5">Avisaremos por e-mail assim que as assinaturas abrirem.</p>';
+  } else {
+    const teste = cfg.dias_teste > 0 && !(a && a.ja_teve_teste);
+    h += topo(a && a.status === 'canceled' ? 'Sua assinatura terminou' : 'Assine o Pingo', a && a.status === 'canceled' ? 'Assine de novo para continuar de onde parou.' : 'Prática diária de matemática que a criança pede para fazer.');
+    cartao = '<p style="margin:0;display:flex;align-items:baseline;gap:8px"><span style="font-size:44px;font-weight:900">' + reais(cfg.preco_centavos) + '</span><span style="font-size:20px;font-weight:800;color:#4A5375">por mês</span></p>' +
+      (teste ? '<p class="aviso aviso-ok" style="margin:0;font-size:17px"><span class="txt"><b>' + cfg.dias_teste + ' dias grátis.</b> A primeira cobrança só acontece depois do teste, e dá para cancelar antes.</span></p>' : '') +
+      '<ul style="margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px;font-size:17px;font-weight:700"><li>Escrita à mão com correção na hora</li><li>Trilha que avança no ritmo da criança</li><li>Painel dos pais com replay e dicas</li><li>Quantas crianças quiser na mesma conta</li><li>Backup e uso em mais de um aparelho</li></ul>' +
+      '<button class="btn btn-laranja" data-act="assinar"' + (pagamento.estado === 'indo' ? ' disabled' : '') + '>' + (pagamento.estado === 'indo' ? 'Abrindo pagamento seguro…' : (teste ? 'Começar teste grátis' : 'Assinar com cartão de crédito')) + '</button>' +
+      '<p class="peq" style="margin:0;line-height:1.5">Cobrança mensal recorrente no cartão de crédito. Cancele quando quiser na Área dos pais, sem multa; o acesso continua até o fim do período pago. O pagamento é processado pela Stripe: o Pingo não vê nem guarda os dados do cartão.</p>';
+  }
+  if (pagamento.msg) cartao += '<p class="' + (pagamento.neutro ? 'peq' : 'erro-txt') + '" role="alert" style="margin:0;font-size:16px">' + esc(pagamento.msg) + '</p>';
+  if (pagamento.verificar) cartao += '<button class="btn btn-claro btn-pequeno" data-act="verificarAssinatura">Já paguei, verificar de novo</button>';
+  h += '<section class="cartao" style="display:flex;flex-direction:column;gap:16px">' + cartao + '</section>';
+  h += '<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;justify-content:center;font-size:16px"><span class="peq">' + esc((db.conta && db.conta.email) || '') + '</span><button class="linkbtn" data-act="pedeSair" style="min-height:44px">Sair da conta</button><button class="linkbtn" data-act="privacidade" style="min-height:44px">Privacidade</button></div>';
+  return h + '</main>';
+};
+
+function cartaoAssinatura() {
+  const c = db.cobranca; if (!c) return '';
+  const a = c.assin, ativa = a && ['active', 'trialing', 'past_due'].indexOf(a.status) >= 0;
+  let linha;
+  if (!ativa && c.admin) linha = 'Conta de administrador: acesso liberado sem assinatura.';
+  else if (!a || a.status === 'nenhuma') linha = 'Sem assinatura.';
+  else if (a.status === 'trialing') linha = (a.cancelar_no_fim ? 'Teste grátis cancelado: o acesso vai até ' + dataCurta(a.teste_fim || a.periodo_fim) + ', sem cobrança.' : 'Teste grátis até ' + dataCurta(a.teste_fim || a.periodo_fim) + '. Depois, ' + reais(a.preco_centavos) + ' por mês.');
+  else if (a.status === 'active') linha = a.cancelar_no_fim ? 'Cancelada: o acesso continua até ' + dataCurta(a.periodo_fim) + ', sem novas cobranças.' : 'Ativa · ' + reais(a.preco_centavos) + ' por mês · próxima cobrança em ' + dataCurta(a.periodo_fim) + '.';
+  else if (a.status === 'past_due') linha = 'Pagamento pendente: atualize o cartão para não perder o acesso.';
+  else linha = 'Assinatura encerrada.';
+  return '<section class="cartao" style="display:flex;flex-direction:column;gap:12px"><h2 style="font-size:22px">Assinatura</h2>' +
+    '<p style="margin:0;font-size:17px;font-weight:700">' + esc(linha) + '</p>' +
+    (pagamento.msg && tela === 'pais' ? '<p class="erro-txt" role="alert" style="margin:0">' + esc(pagamento.msg) + '</p>' : '') +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+    (a && a.status !== 'nenhuma' ? '<button class="btn btn-claro btn-pequeno" data-act="portal">' + (pagamento.estado === 'indo' ? 'Abrindo…' : 'Trocar cartão, ver recibos ou cancelar') + '</button>' : '') +
+    (c.admin ? '<button class="btn btn-laranja btn-pequeno" data-act="abrirAdmin">Administração do Pingo</button>' : '') + '</div></section>';
+}
+
+/* ---------- Administração ---------- */
+let adminDados = null, adminMsg = null, adminOcupado = false;
+async function carregarAdmin() {
+  try { adminDados = await NUVEM.funcao('admin-cobranca', { acao: 'resumo' }); } catch (e) { adminMsg = { t: e.daFuncao ? e.message : traduzErro(e) }; }
+  if (tela === 'admin') render();
+}
+VIEWS.admin = function () {
+  let h = '<main class="tela"><div class="topo"><div class="marca" style="font-size:24px">' + gota(28) + 'Pingo <span style="font-weight:700;color:#4A5375">administração</span></div><button class="btn btn-claro btn-pequeno" data-act="voltarPais">Voltar</button></div>';
+  if (!db.cobranca || !db.cobranca.admin) return h + '<section class="cartao"><p>Acesso só para administradores.</p></section></main>';
+  if (!adminDados) return h + '<section class="cartao"><p class="instrucao" role="status">' + (adminMsg ? esc(adminMsg.t) : 'Carregando…') + '</p></section></main>';
+  const d = adminDados, cfg = d.config, st = d.stripe, n = d.numeros;
+  const modoTxt = m => m === 'teste' ? 'TESTE (cartões de teste, sem dinheiro de verdade)' : 'PRODUÇÃO (cobranças reais)';
+  const stTxt = st.conectada ? 'Conectada à Stripe em modo ' + modoTxt(st.modoChave) + '.' : !st.chave ? 'Falta a chave secreta da Stripe (STRIPE_SECRET_KEY) nos segredos das Edge Functions do Supabase.' : 'Chave da Stripe encontrada, modo ' + modoTxt(st.modoChave) + '. Toque em Conectar para criar o produto, o preço, o portal do cliente e os avisos automáticos.';
+  h += '<section class="cartao" style="display:flex;flex-direction:column;gap:12px"><h2 style="font-size:22px">Stripe</h2><p style="margin:0;font-size:17px;font-weight:700">' + esc(stTxt) + '</p>' +
+    (st.chave ? '<button class="btn ' + (st.conectada ? 'btn-claro' : 'btn-laranja') + ' btn-pequeno" data-act="adminConectar"' + (adminOcupado ? ' disabled' : '') + ' style="align-self:flex-start">' + (st.conectada ? 'Reconectar' : 'Conectar à Stripe') + '</button>' : '') + '</section>';
+  h += '<section class="heroi" style="gap:14px;border-radius:24px;min-height:0"><p style="margin:0;font-size:15px;font-weight:800">Assinantes agora</p><div class="metricas">' +
+    '<div class="metrica"><b>' + n.ativos + '</b><span>ativos</span></div><div class="metrica"><b>' + n.em_teste + '</b><span>em teste grátis</span></div>' +
+    '<div class="metrica"><b>' + n.pendentes + '</b><span>pagamento pendente</span></div><div class="metrica"><b>' + n.cancelados + '</b><span>cancelados</span></div>' +
+    '<div class="metrica"><b>' + reais(n.mrr_centavos) + '</b><span>receita mensal recorrente</span></div></div></section>';
+  h += '<form class="cartao" data-form="admin" style="display:flex;flex-direction:column;gap:14px" novalidate><h2 style="font-size:22px">Preço e vendas</h2>' +
+    '<label class="campo">Preço mensal (R$)<input name="preco" inputmode="decimal" autocomplete="off" value="' + (cfg.preco_centavos / 100).toFixed(2).replace('.', ',') + '" required></label>' +
+    '<label class="campo">Dias de teste grátis (0 a 60)<input name="dias" inputmode="numeric" autocomplete="off" value="' + cfg.dias_teste + '" required></label>' +
+    '<label style="display:flex;gap:12px;align-items:center;font-size:17px;font-weight:700"><input type="checkbox" name="abertas"' + (cfg.vendas_abertas ? ' checked' : '') + ' style="width:24px;height:24px">Vendas abertas (novas famílias podem assinar)</label>' +
+    '<label style="display:flex;gap:12px;align-items:flex-start;font-size:17px;font-weight:700;line-height:1.4"><input type="checkbox" name="atuais" style="width:24px;height:24px;flex:none;margin-top:2px">Aplicar o novo preço também a quem já assina (vale a partir da próxima cobrança de cada um)</label>' +
+    '<p class="peq" style="margin:0;line-height:1.5">Antes de aumentar o preço de quem já assina, avise os clientes com antecedência, como pede o Código de Defesa do Consumidor. Sem essa opção marcada, quem já assina continua no preço antigo.</p>' +
+    (adminMsg ? '<p class="' + (adminMsg.ok ? 'ok-txt' : 'erro-txt') + '" role="alert" style="margin:0;font-size:16px">' + esc(adminMsg.t) + '</p>' : '') +
+    '<button class="btn btn-laranja" type="submit"' + (adminOcupado ? ' disabled' : '') + '>' + (adminOcupado ? 'Salvando…' : 'Salvar') + '</button></form></main>';
+  return h;
+};
+async function enviarAdmin(fd) {
+  const txt = String(fd.get('preco') || '').trim().replace(/[^\d,\.]/g, '');
+  const num = Number(txt.indexOf(',') >= 0 ? txt.replace(/\./g, '').replace(',', '.') : txt);
+  const dias = Number(String(fd.get('dias') || '0').trim());
+  if (!isFinite(num) || num < 1) { adminMsg = { t: 'Preço inválido. Exemplo: 49,90' }; return render(); }
+  if (!Number.isInteger(dias) || dias < 0 || dias > 60) { adminMsg = { t: 'Dias de teste: um número de 0 a 60.' }; return render(); }
+  adminOcupado = true; adminMsg = null; render();
+  try {
+    const r = await NUVEM.funcao('admin-cobranca', { acao: 'salvar', preco_centavos: Math.round(num * 100), dias_teste: dias, vendas_abertas: !!fd.get('abertas'), aplicar_atuais: !!fd.get('atuais') });
+    adminDados = r; adminMsg = { ok: true, t: 'Salvo.' + (r.migrados ? ' Novo preço aplicado a ' + r.migrados + (r.migrados === 1 ? ' assinante.' : ' assinantes.') : '') + (r.falhas ? ' ' + r.falhas + ' não puderam ser atualizados; tente de novo.' : '') };
+    await atualizarCobranca();
+  } catch (e) { adminMsg = { t: e.daFuncao ? e.message : traduzErro(e) }; }
+  adminOcupado = false; if (tela === 'admin') render();
+}
+
 VIEWS.portao = function () {
   return '<main class="tela" style="max-width:560px;justify-content:center"><form class="cartao" data-form="portao" style="display:flex;flex-direction:column;gap:16px">' +
     '<p class="rotulo">Só para adultos</p><h2>Quanto é ' + desafio.a + ' × ' + desafio.b + '?</h2>' +
@@ -711,6 +874,7 @@ VIEWS.pais = function () {
     return '<div class="item"><span class="tag" style="background:' + (ok >= 4 ? '#EAF6EF;color:#1F7A45' : '#FFF1E3;color:#9A3412') + '">+' + HABILIDADES[l.hab] + '</span><div class="info"><p style="font-weight:800">Somando ' + HABILIDADES[l.hab] + '</p><p class="peq">' + dataBonita(l.dia) + ' · ' + ok + ' de 5 de primeira · ' + Math.max(1, Math.round(l.ms / 60000)) + ' min</p></div>' +
       '<button class="btn btn-claro btn-pequeno" data-act="replay" data-id="' + l.id + '" aria-label="Ver replay da lição de ' + dataBonita(l.dia) + '">Replay</button></div>';
   }).join('') : '<p class="peq" style="margin:0">As lições aparecem aqui depois da primeira prática.</p>') + '</div></section>';
+  html += cartaoAssinatura();
   html += cartaoConta();
   html += '<section class="cartao" style="display:flex;flex-direction:column;gap:12px"><h2 style="font-size:22px">Ajustes de '  + esc(c.nome) + '</h2>' +
     '<label style="display:flex;gap:12px;align-items:center;font-size:17px;font-weight:700"><input type="checkbox" data-act="toggleTeclado" ' + (c.teclado ? 'checked' : '') + ' style="width:24px;height:24px">Responder pelo teclado numérico em vez de escrever</label>' +
@@ -875,6 +1039,25 @@ const ACOES = {
   contaVoltar: () => { contaMsg = null; contaSenha = ''; if (contaVolta === 'pais' && db.criancas.length && logado()) ir('pais'); else ir(telaInicial()); },
   privacidade: () => { guardarForm(); modal = modalPrivacidade; render(); },
   sincAgora: () => { sincronizar(); atualizarSelo(); },
+  assinar: async () => {
+    pagamento = { estado: 'indo', msg: null }; render();
+    try { const r = await NUVEM.funcao('assinatura', { acao: 'checkout' }); if (r && r.url) { location.href = r.url; return; } throw new Error('Resposta sem endereço de pagamento.'); }
+    catch (e) { pagamento = { estado: null, msg: e.daFuncao ? e.message : traduzErro(e) }; render(); }
+  },
+  portal: async () => {
+    pagamento = { estado: 'indo', msg: null }; render();
+    try { const r = await NUVEM.funcao('assinatura', { acao: 'portal' }); if (r && r.url) { location.href = r.url; return; } throw new Error('Resposta sem endereço do portal.'); }
+    catch (e) { pagamento = { estado: null, msg: e.daFuncao ? e.message : traduzErro(e) }; render(); }
+  },
+  verificarAssinatura: () => { if (!db.cobranca) { atualizarCobranca().then(() => ir(telaInicial())); } else confirmarPagamento(); },
+  abrirAdmin: () => { adminDados = null; adminMsg = null; ir('admin'); carregarAdmin(); },
+  voltarPais: () => { adminMsg = null; ir('pais'); },
+  adminConectar: async () => {
+    adminOcupado = true; adminMsg = null; render();
+    try { adminDados = await NUVEM.funcao('admin-cobranca', { acao: 'conectar' }); adminMsg = { ok: true, t: 'Stripe conectada: produto, preço, portal do cliente e avisos automáticos prontos.' }; await atualizarCobranca(); }
+    catch (e) { adminMsg = { t: e.daFuncao ? e.message : traduzErro(e) }; }
+    adminOcupado = false; if (tela === 'admin') render();
+  },
   pedeSair: () => { confirmaExcluir = false; modal = modalSair; render(); },
   cancelaSair: () => { confirmaSair = false; render(); },
   sairConta: async () => {
@@ -910,7 +1093,7 @@ async function enviarConta(fd) {
     else if (contaModo === 'novaSenha') { await NUVEM.novaSenha(senha); const u = await NUVEM.sessao(); if (u) { conectar(u, true); entrou = true; } }
   } catch (e) { contaMsg = { t: traduzErro(e) }; }
   contaOcupado = false; contaSenha = '';
-  if (entrou) { await sincronizar(); contaMsg = null; ir(telaInicial()); return; }
+  if (entrou) { await atualizarCobranca(); await sincronizar(); contaMsg = null; ir(telaInicial()); return; }
   if (tela === 'conta') render();
 }
 function aviso(m) { licao.status = 'aviso'; licao.msg = m; render(); const q = app.querySelector('.quadro'); if (q) q.classList.add('balanca'); }
@@ -928,6 +1111,7 @@ app.addEventListener('submit', e => {
     const c = { id: novoId('cri'), nome, cor: String(fd.get('cor') || CORES[0]), hab: 0, nivel: 0, estrelas: 0, estrelasArq: 0, sequencia: 0, ultimoDia: null, teclado: false, reinicio: 0, atualizado: Date.now(), sujo: true, sinc: false, historico: [] };
     db.criancas.push(c); db.ativa = c.id; salvar(); agendarSinc(0); paisAba = null; ir('inicio');
   } else if (e.target.dataset.form === 'conta') { enviarConta(fd);
+  } else if (e.target.dataset.form === 'admin') { enviarAdmin(fd);
   } else if (e.target.dataset.form === 'portao') {
     if (Number(fd.get('r')) === desafio.a * desafio.b) { paisAba = db.ativa || (db.criancas[0] && db.criancas[0].id); ir('pais'); }
     else { desafio = { a: 6 + Math.floor(Math.random() * 4), b: 6 + Math.floor(Math.random() * 4), erro: true }; render(); }
@@ -935,10 +1119,11 @@ app.addEventListener('submit', e => {
 });
 app.addEventListener('keydown', e => { if (e.key === 'Escape' && modal) { modal = null; render(); } });
 
-window.PINGO_TEST = { recognize, rasterize, NET, novaLicao, dica, mesclar, get db() { return db; } };
+window.PINGO_TEST = { recognize, rasterize, NET, novaLicao, dica, mesclar, temAcesso, get db() { return db; } };
 window.addEventListener('online', () => agendarSinc(200));
 window.addEventListener('offline', () => { db.estadoSinc = 'offline'; atualizarSelo(); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') agendarSinc(1000); });
+checarRetornoPagamento();
 render();
 iniciarNuvem();
 if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('sw.js').catch(() => {});

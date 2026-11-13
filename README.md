@@ -2,7 +2,7 @@
 
 App de prática diária para crianças de 4 a 10 anos: a criança escreve a resposta com o dedo ou a caneta e o app corrige na hora, com reconhecimento de dígitos rodando no próprio aparelho.
 
-**v0.3** — acesso só com a conta do responsável (login obrigatório), logoff, backup na nuvem e sincronização entre aparelhos (offline-first).
+**v0.4** — assinatura mensal recorrente com cartão (Stripe), preço configurável na tela de administração, login obrigatório, backup e sincronização entre aparelhos.
 
 ## Arquivos
 
@@ -31,3 +31,12 @@ App de prática diária para crianças de 4 a 10 anos: a criança escreve a resp
 - Sem login, o app mostra só as telas de conta. Com a sessão salva, abre mesmo sem internet.
 - Sessão expirada tranca o app até entrar de novo, sem apagar o que está no aparelho.
 - Sair da conta (Área dos pais) limpa o aparelho (os dados continuam na nuvem). Excluir a conta apaga tudo, em cascata.
+
+## Cobrança (Stripe)
+
+- `supabase/cobranca.sql` — assinaturas, preço, administradores; o banco só aceita gravar progresso de quem tem assinatura em dia (ou é administrador).
+- `supabase/functions/assinatura` — página de pagamento (Stripe Checkout), portal do cliente (trocar cartão, recibos, cancelar), conferência da assinatura e exclusão de conta (cancela a cobrança antes de apagar).
+- `supabase/functions/stripe-webhook` — recebe os avisos da Stripe, confere a assinatura digital e grava o status. "Verify JWT" desligado.
+- `supabase/functions/admin-cobranca` — conectar à Stripe (cria produto, preço, webhook e portal), definir preço e dias de teste, abrir vendas e ver os números.
+
+Ligar: em Edge Functions › Secrets, crie `STRIPE_SECRET_KEY` (comece com a chave de teste `sk_test_…`). Depois, no app, Área dos pais › Administração do Pingo › Conectar à Stripe. Para cobrar de verdade, troque pela chave `sk_live_…` e toque em Reconectar.
