@@ -6,6 +6,8 @@ class Server:
     def tem(s,uid):
         a=s.assin.get(uid) or {}
         if uid in s.admins: return True
+        if a.get('bloqueado'): return False
+        if a.get('cortesia'): return True
         if a.get('status') in ('active','trialing'): return True
         if a.get('status')=='past_due' and a.get('periodo_fim','')> (datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(days=10)).isoformat(): return True
         return False
@@ -42,6 +44,25 @@ class Server:
             if nome=='assinatura' and acao=='excluir_conta': return s.handle(dev,'excluir','{}',tok)
             if nome=='admin-cobranca':
                 if uid not in s.admins: return {'erro':'Acesso só para administradores.','status':403}
+                def lista():
+                    out=[]
+                    for em,u in s.users.items():
+                        i=u['id']; x=s.assin.get(i) or {}; pago=x.get('status') in ('active','trialing','past_due') and not x.get('cortesia_mock')
+                        if i in s.admins: mot='admin'
+                        elif x.get('bloqueado'): mot='bloqueado'
+                        elif x.get('cortesia'): mot='cortesia'
+                        elif pago: mot='assinante'
+                        else: mot='sem_assinatura'
+                        out.append({'id':i,'email':em,'criado_em':'2026-11-12T10:00:00Z','ultimo_login':None,'confirmado':True,'criancas':sum(1 for c in s.cri.values() if c['dono']==i),'status':x.get('status','nenhuma'),'pago':pago,'ativo':mot in ('admin','cortesia','assinante'),'motivo':mot})
+                    return out
+                if acao=='usuarios': return {'ok':{'usuarios':lista()}}
+                if acao=='acesso':
+                    i=c['user_id']
+                    if i in s.admins: return {'erro':'Administradores sempre têm acesso.','status':400}
+                    x=s.assin.setdefault(i,{'status':'nenhuma'}); pago=x.get('status') in ('active','trialing','past_due')
+                    if c['ativo']: x['bloqueado']=False; x['cortesia']=x.get('cortesia') or not pago
+                    else: x['cortesia']=False; x['bloqueado']=pago
+                    return {'ok':{'usuarios':lista(),'aviso':'Acesso bloqueado, mas a assinatura continua sendo cobrada na Stripe.' if (not c['ativo'] and pago) else None}}
                 if acao=='salvar': s.config.update(preco_centavos=c['preco_centavos'],dias_teste=c['dias_teste'],vendas_abertas=c['vendas_abertas']); s.ultimo_salvar=c
                 n=lambda st: sum(1 for x in s.assin.values() if x.get('status')==st)
                 return {'ok':{'config':dict(s.config),'stripe':{'chave':True,'modoChave':'teste','conectada':True},'numeros':{'ativos':n('active'),'em_teste':n('trialing'),'pendentes':n('past_due'),'cancelados':n('canceled'),'mrr_centavos':sum(x['preco_centavos'] for x in s.assin.values() if x.get('status')=='active')},'migrados':0,'falhas':0}}
@@ -192,6 +213,26 @@ async def main():
         check('Salvo' in await A.locator('[role=alert]').inner_text(),'admin vê confirmação')
         await A.fill('input[name=preco]','abc'); await A.click('form[data-form=admin] button[type=submit]'); await idle(A,300)
         check('inválido' in await A.locator('[role=alert]').inner_text() and S.config['preco_centavos']==3990,'preço inválido é recusado no app')
+        # usuários: lista e liga/desliga
+        S.users['avo@x.com']={'id':'u99','senha':'x'}; outro='u99'
+        await A.click('[data-act=voltarPais]'); await A.click('[data-act=abrirAdmin]'); await idle(A,600)
+        t=await A.locator('#titUsu >> xpath=..').inner_text()
+        check('Ativos (1)' in t and 'pai@x.com' in t and 'Administrador' in t,'admin vê a lista de usuários ativos')
+        await A.click('[data-act=adminFiltro][data-f=todos]'); await idle(A,200)
+        sw=A.locator(f'[data-act=adminAcesso][data-id={outro}]')
+        check(await sw.get_attribute('aria-checked')=='false','lista completa mostra quem está sem acesso')
+        await sw.click(); await idle(A,400)
+        check(S.assin[outro].get('cortesia') and await sw.get_attribute('aria-checked')=='true' and 'Cortesia' in await A.locator('#titUsu >> xpath=..').inner_text(),'ligar dá cortesia')
+        await A.screenshot(path='/home/claude/pingo/test/v5_usuarios.png',full_page=True)
+        await sw.click(); await idle(A,400)
+        check(not S.assin[outro].get('cortesia') and await sw.get_attribute('aria-checked')=='false','desligar tira a cortesia')
+        S.assin[outro]={'status':'active','preco_centavos':4990,'periodo_fim':(hoje+datetime.timedelta(days=20)).isoformat()}
+        await A.click('[data-act=voltarPais]'); await A.click('[data-act=abrirAdmin]'); await idle(A,600); await A.click('[data-act=adminFiltro][data-f=todos]')
+        await A.click(f'[data-act=adminAcesso][data-id={outro}]'); await idle(A,200)
+        check(not S.assin[outro].get('bloqueado') and 'Stripe' in await A.locator('.confirma').inner_text(),'bloquear quem paga pede confirmação')
+        await A.click('.confirma [data-ok]'); await idle(A,400)
+        check(S.assin[outro].get('bloqueado') and 'Stripe' in await A.locator('[role=alert]').first.inner_text(),'bloqueio de pagante confirmado, com aviso da cobrança')
+        S.assin.pop(outro,None); S.users.pop('avo@x.com')
         await A.click('[data-act=voltarPais]'); await A.click('[data-act=voltarCrianca]')
         S.admins.discard(uid); S.assin[uid]={'status':'active','preco_centavos':4990,'periodo_fim':(hoje+datetime.timedelta(days=20)).isoformat(),'cancelar_no_fim':False,'ja_teve_teste':True}
         await A.reload(); await idle(A)

@@ -69,6 +69,7 @@ const chamar = async (fn: any, deps: any, quem: any, corpo: any) => {
 };
 const depsAdmin = { ...base, stripe, chave: 'sk_test_simulada', webhookUrl: 'https://p.supabase.co/functions/v1/stripe-webhook' };
 const depsAss = { ...base, stripe };
+const acesso = (u: any) => sql.begin(async (tx: any) => { await tx`set local role authenticated`; await tx`select set_config('request.jwt.claim.sub', ${u.id}, true)`; return (await tx`select public.tem_acesso() as ok`)[0].ok; });
 const statusDe = async (u: any) => (await sql`select * from public.assinaturas where dono = ${u.id}`)[0];
 
 Deno.test('fluxo completo de cobrança', async (t) => {
@@ -172,6 +173,41 @@ Deno.test('fluxo completo de cobrança', async (t) => {
   await t.step('resumo do admin', async () => {
     const r = await chamar(admin, depsAdmin, ADM, { acao: 'resumo' });
     assertEquals(r.corpo.numeros.ativos, 1); assertEquals(r.corpo.numeros.cancelados, 1); assertEquals(r.corpo.numeros.mrr_centavos, 5990);
+  });
+  await t.step('usuários: lista, cortesia, bloqueio de pagante e proteção do admin', async () => {
+    let r = await chamar(admin, depsAdmin, A, { acao: 'usuarios' });
+    assertEquals(r.status, 403);
+    r = await chamar(admin, depsAdmin, ADM, { acao: 'usuarios' });
+    const de = (u: any) => r.corpo.usuarios.find((x: any) => x.id === u.id);
+    assertEquals(r.corpo.usuarios.length, 3);
+    assertEquals([de(ADM).ativo, de(ADM).motivo], [true, 'admin']);
+    assertEquals([de(A).ativo, de(A).motivo, de(A).pago], [true, 'assinante', true]);
+    assertEquals([de(B).ativo, de(B).motivo], [false, 'cancelado']);
+    // cortesia para B
+    r = await chamar(admin, depsAdmin, ADM, { acao: 'acesso', user_id: B.id, ativo: true });
+    assertEquals([de(B).ativo, de(B).motivo], [true, 'cortesia']);
+    assertEquals(await acesso(B), true);
+    assertEquals((await chamar(admin, depsAdmin, ADM, { acao: 'resumo' })).corpo.numeros.cortesias, 1);
+    // tira a cortesia
+    r = await chamar(admin, depsAdmin, ADM, { acao: 'acesso', user_id: B.id, ativo: false });
+    assertEquals([de(B).ativo, r.corpo.aviso], [false, null]);
+    assertEquals(await acesso(B), false);
+    // bloqueia A, que paga: avisa que a Stripe continua cobrando
+    r = await chamar(admin, depsAdmin, ADM, { acao: 'acesso', user_id: A.id, ativo: false });
+    assertEquals([de(A).ativo, de(A).motivo], [false, 'bloqueado']);
+    assert(String(r.corpo.aviso).includes('Stripe'));
+    assertEquals(await acesso(A), false);
+    // webhook não desfaz o bloqueio
+    await avisar('customer.subscription.updated', S.subs[sub.id]);
+    assertEquals((await statusDe(A)).bloqueado, true);
+    // reativa A: volta como assinante, sem virar cortesia
+    r = await chamar(admin, depsAdmin, ADM, { acao: 'acesso', user_id: A.id, ativo: true });
+    assertEquals([de(A).ativo, de(A).motivo], [true, 'assinante']);
+    assertEquals((await statusDe(A)).cortesia, false);
+    // admin e pedidos inválidos
+    assertEquals((await chamar(admin, depsAdmin, ADM, { acao: 'acesso', user_id: ADM.id, ativo: false })).status, 400);
+    assertEquals((await chamar(admin, depsAdmin, ADM, { acao: 'acesso', user_id: 'x', ativo: false })).status, 400);
+    assertEquals((await chamar(admin, depsAdmin, ADM, { acao: 'acesso', user_id: 'dddddddd-0000-0000-0000-000000000009', ativo: true })).status, 404);
   });
   await t.step('excluir conta cancela a cobrança e apaga tudo', async () => {
     const r = await chamar(assinatura, depsAss, A, { acao: 'excluir_conta' });

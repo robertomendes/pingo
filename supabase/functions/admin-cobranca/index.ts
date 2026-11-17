@@ -1,6 +1,7 @@
 // Pingo — função "admin-cobranca" (só para administradores)
 // Ações: resumo (configuração e números), conectar (cria produto, preço,
-// webhook e portal na Stripe) e salvar (preço, dias de teste, vendas abertas).
+// webhook e portal na Stripe), salvar (preço, dias de teste, vendas abertas),
+// usuarios (lista de contas e situação de acesso) e acesso (ativa/desativa uma conta).
 // deno-lint-ignore-file no-explicit-any
 import Stripe from 'npm:stripe@23.1.0';
 import postgres from 'npm:postgres@3.4.5';
@@ -34,6 +35,39 @@ function modoDaChave(chave: string): 'teste' | 'producao' | null {
   return null;
 }
 
+// Mesma regra de public.tem_acesso(), calculada para qualquer conta.
+function pagoEmDia(a: any): boolean {
+  if (!a) return false;
+  const fim = a.periodo_fim ? new Date(a.periodo_fim).getTime() : null, dia = 86400000;
+  if ((a.status === 'active' || a.status === 'trialing') && (fim === null || fim > Date.now() - 3 * dia)) return true;
+  return a.status === 'past_due' && fim !== null && fim > Date.now() - 10 * dia;
+}
+function situacao(l: any): { ativo: boolean; motivo: string } {
+  if (l.admin) return { ativo: true, motivo: 'admin' };
+  if (l.bloqueado) return { ativo: false, motivo: 'bloqueado' };
+  if (l.cortesia) return { ativo: true, motivo: 'cortesia' };
+  if (pagoEmDia(l)) return { ativo: true, motivo: l.status === 'trialing' ? 'teste' : l.status === 'past_due' ? 'pendente' : 'assinante' };
+  return { ativo: false, motivo: l.status === 'canceled' ? 'cancelado' : 'sem_assinatura' };
+}
+async function usuarios(deps: Deps) {
+  const linhas = await deps.sql`
+    select u.id, u.email, u.created_at, u.last_sign_in_at, (u.email_confirmed_at is not null) as confirmado,
+           (ad.user_id is not null) as admin, coalesce(a.status, 'nenhuma') as status, a.periodo_fim, a.preco_centavos,
+           coalesce(a.cortesia, false) as cortesia, coalesce(a.bloqueado, false) as bloqueado,
+           (a.stripe_subscription_id is not null) as pago,
+           (select count(*) from public.criancas c where c.dono = u.id)::int as criancas
+      from auth.users u
+      left join public.assinaturas a on a.dono = u.id
+      left join public.admins ad on ad.user_id = u.id
+     order by u.created_at desc
+     limit 1000`;
+  return linhas.map((l: any) => ({
+    id: l.id, email: l.email, criado_em: l.created_at, ultimo_login: l.last_sign_in_at, confirmado: l.confirmado,
+    criancas: l.criancas, status: l.status, pago: !!l.pago && pagoEmDia(l), preco_centavos: l.preco_centavos, periodo_fim: l.periodo_fim,
+    ...situacao(l),
+  }));
+}
+
 async function resumo(deps: Deps) {
   const [cfg] = await deps.sql`select preco_centavos, dias_teste, moeda, vendas_abertas, modo, stripe_price_id, atualizado_em from public.config_cobranca where id = 1`;
   const [seg] = await deps.sql`select webhook_endpoint_id from public.cobranca_segredos where id = 1`;
@@ -43,7 +77,8 @@ async function resumo(deps: Deps) {
   return {
     config: { preco_centavos: cfg.preco_centavos, dias_teste: cfg.dias_teste, vendas_abertas: cfg.vendas_abertas, modo: cfg.modo, atualizado_em: cfg.atualizado_em },
     stripe: { chave: !!deps.stripe, modoChave: modoDaChave(deps.chave), conectada: !!(cfg.stripe_price_id && seg?.webhook_endpoint_id && cfg.modo === modoDaChave(deps.chave)) },
-    numeros: { ativos: n('active'), em_teste: n('trialing'), pendentes: n('past_due') + n('unpaid'), cancelados: n('canceled'), mrr_centavos: mrr },
+    numeros: { ativos: n('active'), em_teste: n('trialing'), pendentes: n('past_due') + n('unpaid'), cancelados: n('canceled'), mrr_centavos: mrr,
+      cortesias: (await deps.sql`select count(*)::int as n from public.assinaturas where cortesia and not bloqueado`)[0].n },
   };
 }
 
@@ -63,6 +98,29 @@ export async function handler(req: Request, deps: Deps): Promise<Response> {
   const { sql, stripe } = deps;
   try {
     if (corpo.acao === 'resumo') return resposta(req, deps, await resumo(deps));
+
+    if (corpo.acao === 'usuarios') return resposta(req, deps, { usuarios: await usuarios(deps) });
+
+    if (corpo.acao === 'acesso') {
+      const alvo = String(corpo.user_id ?? '');
+      if (!/^[0-9a-f-]{36}$/i.test(alvo) || typeof corpo.ativo !== 'boolean') return resposta(req, deps, { erro: 'Pedido inválido.' }, 400);
+      const [l] = await sql`
+        select u.id, (ad.user_id is not null) as admin, a.status, a.periodo_fim, a.stripe_subscription_id
+          from auth.users u left join public.assinaturas a on a.dono = u.id left join public.admins ad on ad.user_id = u.id
+         where u.id = ${alvo}`;
+      if (!l) return resposta(req, deps, { erro: 'Usuário não encontrado.' }, 404);
+      if (l.admin) return resposta(req, deps, { erro: 'Administradores sempre têm acesso.' }, 400);
+      const pago = !!l.stripe_subscription_id && pagoEmDia(l);
+      if (corpo.ativo) {
+        // Quem paga em dia só é desbloqueado; quem não paga ganha cortesia.
+        await sql`insert into public.assinaturas (dono, cortesia, bloqueado, atualizado_em) values (${alvo}, ${!pago}, false, now())
+                  on conflict (dono) do update set bloqueado = false, cortesia = public.assinaturas.cortesia or excluded.cortesia, atualizado_em = now()`;
+      } else {
+        // Tira a cortesia; se ainda houver assinatura paga em dia, bloqueia.
+        await sql`update public.assinaturas set cortesia = false, bloqueado = ${pago}, atualizado_em = now() where dono = ${alvo}`;
+      }
+      return resposta(req, deps, { usuarios: await usuarios(deps), aviso: !corpo.ativo && pago ? 'Acesso bloqueado, mas a assinatura continua sendo cobrada na Stripe. Para parar a cobrança, cancele lá.' : null });
+    }
 
     if (corpo.acao === 'conectar') {
       const modo = modoDaChave(deps.chave);

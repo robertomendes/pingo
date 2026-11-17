@@ -109,6 +109,24 @@ h2{margin:0;font-size:28px;font-weight:900}
 .item .info{flex:1}
 .item .info p{margin:0}
 .peq{font-size:14px;font-weight:700;color:var(--cinza)}
+.abas{display:flex;gap:8px;flex-wrap:wrap}
+.aba{border:2px solid var(--linha);background:#fff;border-radius:999px;padding:8px 16px;font-size:16px;font-weight:800;min-height:44px}
+.aba.sel{background:var(--azul);border-color:var(--azul);color:#fff}
+.usuarios{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.usuarios li{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 0;border-top:1px solid var(--linha)}
+.usuarios li:first-child{border-top:0}
+.usu-info{display:flex;flex-direction:column;gap:4px;min-width:0}
+.usu-info b{font-size:17px;font-weight:800;overflow-wrap:anywhere}
+.selo{align-self:flex-start;border-radius:999px;padding:2px 10px;font-size:13px;font-weight:800}
+.selo-ok{background:var(--verde-claro);color:var(--verde)}.selo-cortesia{background:#E8ECFF;color:var(--azul-esc)}
+.selo-adm{background:var(--creme);color:var(--marrom)}.selo-alerta{background:#FFF4D6;color:#7A5300}.selo-off{background:#EEF0F5;color:var(--cinza)}
+.chave{flex:none;width:60px;height:36px;border-radius:999px;border:0;background:#C9CFDD;position:relative;padding:0;transition:background .15s}
+.chave span{position:absolute;top:4px;left:4px;width:28px;height:28px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left .15s}
+.chave.on{background:var(--verde)}.chave.on span{left:28px}
+.chave:disabled{opacity:.5}
+.chave:focus-visible,.aba:focus-visible{outline:3px solid var(--laranja);outline-offset:2px}
+.confirma{display:flex;flex-direction:column;align-items:flex-end;gap:8px;max-width:260px;font-size:14px;font-weight:700;color:var(--marrom);text-align:right}
+.confirma .btn{width:100%}
 .cores{display:flex;gap:10px}
 .cores label{position:relative}
 .cores input{position:absolute;opacity:0;width:1px;height:1px}
@@ -281,7 +299,7 @@ const NUVEM = (function () {
     enviarLicoes: async rows => { if (rows.length) ok(await sb.from('licoes').upsert(rows, { onConflict: 'id', ignoreDuplicates: true })); },
     apagarCriancas: async ids => { if (ids.length) ok(await sb.from('criancas').delete().in('id', ids)); },
     cobranca: async () => {
-      const a = await sb.from('assinaturas').select('status,preco_centavos,periodo_fim,teste_fim,cancelar_no_fim,ja_teve_teste').maybeSingle();
+      const a = await sb.from('assinaturas').select('status,preco_centavos,periodo_fim,teste_fim,cancelar_no_fim,ja_teve_teste,cortesia,bloqueado').maybeSingle();
       const c = await sb.from('config_cobranca').select('preco_centavos,dias_teste,vendas_abertas,modo').eq('id', 1).maybeSingle();
       const adm = await sb.rpc('sou_admin');
       return { assin: ok(a), config: ok(c), admin: !!ok(adm) };
@@ -448,7 +466,8 @@ function logado() { return !!(NUVEM && db.conta && db.conta.ativa); }
 function temAcesso() { // espelha public.tem_acesso() do banco
   if (!logado() || !db.cobranca) return false;
   if (db.cobranca.admin) return true;
-  const a = db.cobranca.assin; if (!a) return false;
+  const a = db.cobranca.assin; if (!a || a.bloqueado) return false;
+  if (a.cortesia) return true;
   const fim = a.periodo_fim ? Date.parse(a.periodo_fim) : null, dia = 86400000;
   if ((a.status === 'active' || a.status === 'trialing') && (fim === null || fim > Date.now() - 3 * dia)) return true;
   return a.status === 'past_due' && !!fim && fim > Date.now() - 10 * dia;
@@ -719,6 +738,10 @@ VIEWS.assinar = function () {
   } else if (!c) {
     h += topo('Só um instante', 'Verificando a assinatura…');
     cartao = '<p class="instrucao" role="status">Se demorar, confira a internet.</p><button class="btn btn-claro btn-pequeno" data-act="verificarAssinatura">Tentar de novo</button>';
+  } else if (a && a.bloqueado) {
+    h += topo('Acesso suspenso', 'Esta conta está sem acesso ao Pingo no momento.');
+    cartao = '<p style="margin:0;font-size:17px;font-weight:600;line-height:1.5">O progresso das crianças continua guardado. Fale com o Pingo para entender e reativar a conta.</p>' +
+      '<button class="btn btn-claro btn-pequeno" data-act="verificarAssinatura">Verificar de novo</button>';
   } else if (a && (a.status === 'past_due' || a.status === 'unpaid')) {
     h += topo('Pagamento pendente', 'Não conseguimos cobrar o cartão cadastrado.');
     cartao = '<p style="margin:0;font-size:17px;font-weight:600;line-height:1.5">Atualize a forma de pagamento para a criança continuar praticando. O progresso está guardado.</p>' +
@@ -747,6 +770,8 @@ function cartaoAssinatura() {
   const a = c.assin, ativa = a && ['active', 'trialing', 'past_due'].indexOf(a.status) >= 0;
   let linha;
   if (!ativa && c.admin) linha = 'Conta de administrador: acesso liberado sem assinatura.';
+  else if (a && a.bloqueado) linha = 'Acesso suspenso pelo Pingo.';
+  else if (a && a.cortesia && !ativa) linha = 'Acesso de cortesia liberado pelo Pingo, sem cobrança.';
   else if (!a || a.status === 'nenhuma') linha = 'Sem assinatura.';
   else if (a.status === 'trialing') linha = (a.cancelar_no_fim ? 'Teste grátis cancelado: o acesso vai até ' + dataCurta(a.teste_fim || a.periodo_fim) + ', sem cobrança.' : 'Teste grátis até ' + dataCurta(a.teste_fim || a.periodo_fim) + '. Depois, ' + reais(a.preco_centavos) + ' por mês.');
   else if (a.status === 'active') linha = a.cancelar_no_fim ? 'Cancelada: o acesso continua até ' + dataCurta(a.periodo_fim) + ', sem novas cobranças.' : 'Ativa · ' + reais(a.preco_centavos) + ' por mês · próxima cobrança em ' + dataCurta(a.periodo_fim) + '.';
@@ -762,9 +787,46 @@ function cartaoAssinatura() {
 
 /* ---------- Administração ---------- */
 let adminDados = null, adminMsg = null, adminOcupado = false;
+let adminUsuarios = null, adminUsuMsg = null, adminFiltro = 'ativos', adminConfirmar = null, adminMexendo = null;
 async function carregarAdmin() {
-  try { adminDados = await NUVEM.funcao('admin-cobranca', { acao: 'resumo' }); } catch (e) { adminMsg = { t: e.daFuncao ? e.message : traduzErro(e) }; }
+  const [r, u] = await Promise.allSettled([NUVEM.funcao('admin-cobranca', { acao: 'resumo' }), NUVEM.funcao('admin-cobranca', { acao: 'usuarios' })]);
+  if (r.status === 'fulfilled') adminDados = r.value; else adminMsg = { t: r.reason && r.reason.daFuncao ? r.reason.message : traduzErro(r.reason) };
+  if (u.status === 'fulfilled') adminUsuarios = u.value.usuarios || []; else adminUsuMsg = { t: u.reason && u.reason.daFuncao ? u.reason.message : traduzErro(u.reason) };
   if (tela === 'admin') render();
+}
+const MOTIVO = { admin: ['Administrador', 'adm'], assinante: ['Assinante', 'ok'], teste: ['Teste grátis', 'ok'], pendente: ['Pagamento pendente', 'alerta'], cortesia: ['Cortesia', 'cortesia'], bloqueado: ['Bloqueado', 'off'], cancelado: ['Cancelou', 'off'], sem_assinatura: ['Sem assinatura', 'off'] };
+function cartaoUsuarios() {
+  let h = '<section class="cartao" style="display:flex;flex-direction:column;gap:14px" aria-labelledby="titUsu"><h2 id="titUsu" style="font-size:22px">Usuários</h2>';
+  if (!adminUsuarios) return h + '<p class="instrucao" role="status">' + (adminUsuMsg ? esc(adminUsuMsg.t) : 'Carregando…') + '</p></section>';
+  const ativos = adminUsuarios.filter(u => u.ativo);
+  const lista = adminFiltro === 'ativos' ? ativos : adminUsuarios;
+  h += '<div class="abas" role="group" aria-label="Filtro de usuários">' +
+    '<button class="aba' + (adminFiltro === 'ativos' ? ' sel' : '') + '" data-act="adminFiltro" data-f="ativos" aria-pressed="' + (adminFiltro === 'ativos') + '">Ativos (' + ativos.length + ')</button>' +
+    '<button class="aba' + (adminFiltro === 'todos' ? ' sel' : '') + '" data-act="adminFiltro" data-f="todos" aria-pressed="' + (adminFiltro === 'todos') + '">Todos (' + adminUsuarios.length + ')</button></div>';
+  if (adminUsuMsg) h += '<p class="' + (adminUsuMsg.ok ? 'ok-txt' : 'erro-txt') + '" role="alert" style="margin:0;font-size:16px">' + esc(adminUsuMsg.t) + '</p>';
+  if (!lista.length) return h + '<p class="peq" style="margin:0">Nenhum usuário ' + (adminFiltro === 'ativos' ? 'ativo ' : '') + 'por enquanto.</p></section>';
+  h += '<ul class="usuarios">' + lista.map(u => {
+    const m = MOTIVO[u.motivo] || [u.motivo, 'off'];
+    const det = ['desde ' + dataCurta(u.criado_em), u.ultimo_login ? 'último acesso ' + dataCurta(u.ultimo_login) : 'nunca entrou', u.criancas + (u.criancas === 1 ? ' criança' : ' crianças')];
+    if (!u.confirmado) det.push('e-mail não confirmado');
+    let ctrl;
+    if (u.motivo === 'admin') ctrl = '<span class="peq">sempre</span>';
+    else if (adminConfirmar === u.id) ctrl = '<div class="confirma"><span>Paga pela Stripe: bloquear não para a cobrança.</span><button class="btn btn-laranja btn-pequeno" data-act="adminAcesso" data-id="' + u.id + '" data-ativo="0" data-ok="1">Bloquear</button><button class="btn btn-claro btn-pequeno" data-act="adminCancelaConfirma">Cancelar</button></div>';
+    else ctrl = '<button class="chave' + (u.ativo ? ' on' : '') + '" role="switch" aria-checked="' + u.ativo + '" aria-label="Acesso de ' + esc(u.email) + '" data-act="adminAcesso" data-id="' + u.id + '" data-ativo="' + (u.ativo ? 0 : 1) + '"' + (adminMexendo === u.id ? ' disabled' : '') + '><span></span></button>';
+    return '<li><div class="usu-info"><b>' + esc(u.email) + '</b><span class="selo selo-' + m[1] + '">' + m[0] + '</span><span class="peq">' + esc(det.join(' · ')) + '</span></div>' + ctrl + '</li>';
+  }).join('') + '</ul>';
+  return h + '<p class="peq" style="margin:0;line-height:1.5">Ligar dá acesso de cortesia, sem cobrança. Desligar tira a cortesia; se a pessoa paga, o acesso fica bloqueado, mas a cobrança só para cancelando na Stripe.</p></section>';
+}
+async function mudarAcesso(id, ativo) {
+  adminMexendo = id; adminConfirmar = null; adminUsuMsg = null; render();
+  try {
+    const r = await NUVEM.funcao('admin-cobranca', { acao: 'acesso', user_id: id, ativo: ativo });
+    adminUsuarios = r.usuarios || adminUsuarios;
+    const u = adminUsuarios.find(x => x.id === id);
+    adminUsuMsg = r.aviso ? { t: r.aviso } : { ok: true, t: u ? (u.ativo ? 'Acesso liberado para ' : 'Acesso retirado de ') + u.email + '.' : 'Feito.' };
+    try { adminDados = await NUVEM.funcao('admin-cobranca', { acao: 'resumo' }); } catch (e) { }
+  } catch (e) { adminUsuMsg = { t: e.daFuncao ? e.message : traduzErro(e) }; }
+  adminMexendo = null; if (tela === 'admin') render();
 }
 VIEWS.admin = function () {
   let h = '<main class="tela"><div class="topo"><div class="marca" style="font-size:24px">' + gota(28) + 'Pingo <span style="font-weight:700;color:#4A5375">administração</span></div><button class="btn btn-claro btn-pequeno" data-act="voltarPais">Voltar</button></div>';
@@ -778,7 +840,9 @@ VIEWS.admin = function () {
   h += '<section class="heroi" style="gap:14px;border-radius:24px;min-height:0"><p style="margin:0;font-size:15px;font-weight:800">Assinantes agora</p><div class="metricas">' +
     '<div class="metrica"><b>' + n.ativos + '</b><span>ativos</span></div><div class="metrica"><b>' + n.em_teste + '</b><span>em teste grátis</span></div>' +
     '<div class="metrica"><b>' + n.pendentes + '</b><span>pagamento pendente</span></div><div class="metrica"><b>' + n.cancelados + '</b><span>cancelados</span></div>' +
+    (n.cortesias ? '<div class="metrica"><b>' + n.cortesias + '</b><span>cortesia</span></div>' : '') +
     '<div class="metrica"><b>' + reais(n.mrr_centavos) + '</b><span>receita mensal recorrente</span></div></div></section>';
+  h += cartaoUsuarios();
   h += '<form class="cartao" data-form="admin" style="display:flex;flex-direction:column;gap:14px" novalidate><h2 style="font-size:22px">Preço e vendas</h2>' +
     '<label class="campo">Preço mensal (R$)<input name="preco" inputmode="decimal" autocomplete="off" value="' + (cfg.preco_centavos / 100).toFixed(2).replace('.', ',') + '" required></label>' +
     '<label class="campo">Dias de teste grátis (0 a 60)<input name="dias" inputmode="numeric" autocomplete="off" value="' + cfg.dias_teste + '" required></label>' +
@@ -1050,7 +1114,15 @@ const ACOES = {
     catch (e) { pagamento = { estado: null, msg: e.daFuncao ? e.message : traduzErro(e) }; render(); }
   },
   verificarAssinatura: () => { if (!db.cobranca) { atualizarCobranca().then(() => ir(telaInicial())); } else confirmarPagamento(); },
-  abrirAdmin: () => { adminDados = null; adminMsg = null; ir('admin'); carregarAdmin(); },
+  abrirAdmin: () => { adminDados = null; adminMsg = null; adminUsuarios = null; adminUsuMsg = null; adminConfirmar = null; ir('admin'); carregarAdmin(); },
+  adminFiltro: d => { adminFiltro = d.f; adminConfirmar = null; render(); },
+  adminCancelaConfirma: () => { adminConfirmar = null; render(); },
+  adminAcesso: d => {
+    if (adminMexendo) return;
+    const ativo = d.ativo === '1', u = (adminUsuarios || []).find(x => x.id === d.id);
+    if (!ativo && u && u.pago && !d.ok) { adminConfirmar = d.id; adminUsuMsg = null; return render(); }
+    mudarAcesso(d.id, ativo);
+  },
   voltarPais: () => { adminMsg = null; ir('pais'); },
   adminConectar: async () => {
     adminOcupado = true; adminMsg = null; render();
