@@ -4,6 +4,10 @@ App de prática diária para crianças de 4 a 10 anos: a criança escreve a resp
 
 **v0.6** — Termos de uso e Política de privacidade (LGPD e ECA Digital), autorização do responsável registrada no cadastro e aceite obrigatório para contas antigas. **v0.5** — lista de usuários na administração, com liga/desliga de acesso (cortesia ou bloqueio). Assinatura mensal recorrente com cartão (Stripe), preço configurável na tela de administração, login obrigatório, backup e sincronização entre aparelhos.
 
+## Hospedagem
+
+O app fica no Netlify (projeto `pingo-app`), publicado sozinho a cada push na `main`, em https://pingo.robertomendes.com.br/ (DNS no próprio Netlify). As configurações estão em `netlify.toml`, que também esconde as pastas `fonte/` e `supabase/`. O endereço antigo do GitHub Pages redireciona para o novo. No Supabase, a variável `APP_URL` das funções e a Site URL do login apontam para o endereço novo.
+
 ## Arquivos
 
 - `index.html` — o app completo (PWA: instala na Tela de Início e funciona offline). Gerado por `fonte/build.py`.
@@ -18,7 +22,7 @@ App de prática diária para crianças de 4 a 10 anos: a criança escreve a resp
 
 1. Crie um projeto em supabase.com, na região **South America (São Paulo)**.
 2. No **SQL Editor**, cole `supabase/schema.sql` inteiro e clique em **Run**.
-3. Em **Authentication › URL Configuration**: Site URL `https://robertomendes.github.io/pingo/` e o mesmo endereço em Redirect URLs.
+3. Em **Authentication › URL Configuration**: Site URL `https://pingo.robertomendes.com.br/` e o mesmo endereço em Redirect URLs.
 4. Em **Settings › API Keys**, copie a Project URL e a chave pública (anon/publishable) para `config.js`. Nunca use a chave `service_role`/secret aqui.
 5. Antes de abrir para clientes: configure um SMTP próprio em **Authentication › Emails** (o envio padrão do Supabase é só para testes) e traduza os modelos de e-mail.
 
