@@ -1,0 +1,20 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap');
+:root{--azul:#2F4BC7;--tinta:#1C2340;--cinza:#4A5375;--fundo:#F3F7FF;--linha:#DDE2EE}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--fundo);color:var(--tinta);font-family:'Nunito',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:17px;line-height:1.6;font-weight:600}
+header,main,footer{max-width:760px;margin:0 auto;padding:0 20px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:max(20px,env(safe-area-inset-top));padding-bottom:8px}
+.marca{display:flex;align-items:center;gap:8px;font-size:26px;font-weight:900;color:var(--azul);text-decoration:none}
+header > a:last-child{font-weight:800}
+main{background:#fff;border-radius:24px;padding:28px clamp(20px,4vw,40px);margin-top:8px;margin-bottom:16px}
+h1{font-size:34px;line-height:1.15;margin:0 0 4px;font-weight:900}
+h2{font-size:22px;margin:28px 0 8px;font-weight:900}
+h3{font-size:18px;margin:16px 0 4px;font-weight:800}
+.versao{color:var(--cinza);font-size:15px;margin:0 0 20px}
+.resumo{background:#E8ECFF;border-radius:18px;padding:4px 20px 8px}
+.resumo h2{margin-top:14px}
+ul{padding-left:22px;margin:8px 0}
+li{margin:6px 0}
+a{color:var(--azul);font-weight:800}
+footer{color:var(--cinza);font-size:15px;padding-bottom:max(28px,env(safe-area-inset-bottom));text-align:center}

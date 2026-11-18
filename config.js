@@ -5,6 +5,6 @@
 window.PINGO_CONFIG = {
   supabaseUrl: 'https://ndrykilaxdnxcitxnnsv.supabase.co',
   supabaseAnonKey: 'sb_publishable_CbQ9BB0UE6Sn39tua4RNjg_Uv4A4T4O',
-  contato: '',
+  contato: 'robertof.mendes@gmail.com',
   regiao: 'São Paulo, Brasil'
 };

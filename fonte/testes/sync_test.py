@@ -2,7 +2,7 @@ import asyncio, json, re, itertools, datetime
 from playwright.async_api import async_playwright
 BASE='http://localhost:8766/'
 class Server:
-    def __init__(s): s.users={}; s.toks={}; s.cri={}; s.lic=[]; s.offline=set(); s.clock=itertools.count(1); s.PAG=3; s.calls=[]; s.assin={}; s.admins=set(); s.config={'preco_centavos':4990,'dias_teste':7,'vendas_abertas':True,'modo':'teste'}; s.checkouts=0
+    def __init__(s): s.users={}; s.toks={}; s.cri={}; s.lic=[]; s.offline=set(); s.clock=itertools.count(1); s.PAG=3; s.calls=[]; s.assin={}; s.admins=set(); s.config={'preco_centavos':4990,'dias_teste':7,'vendas_abertas':True,'modo':'teste'}; s.checkouts=0; s.termos={}; s.consents=[]
     def tem(s,uid):
         a=s.assin.get(uid) or {}
         if uid in s.admins: return True
@@ -18,7 +18,7 @@ class Server:
         a=json.loads(args)
         if op=='criar':
             if a['email'] in s.users: return {'erro':'User already registered'}
-            uid=f'u{len(s.users)+1}'; s.users[a['email']]={'id':uid,'senha':a['senha']}; t='t'+uid+str(next(s.clock)); s.toks[t]=uid; return {'ok':{'tok':t,'u':{'id':uid,'email':a['email']}}}
+            uid=f'u{len(s.users)+1}'; s.users[a['email']]={'id':uid,'senha':a['senha']}; t='t'+uid+str(next(s.clock)); s.toks[t]=uid; s.users[a['email']]['meta']=a.get('termos'); return {'ok':{'tok':t,'u':{'id':uid,'email':a['email'],'termos':a.get('termos')}}}
         if op=='entrar':
             u=s.users.get(a['email'])
             if not u or u['senha']!=a['senha']: return {'erro':'Invalid login credentials'}
@@ -31,7 +31,8 @@ class Server:
             cs=[{k:v for k,v in c.items() if k!='dono'} for c in s.cri.values() if c['dono']==uid]
             ls=[l for l in s.lic if l['dono']==uid and (not a.get('cursor') or l['recebido_em']>a['cursor'])][:s.PAG]
             return {'ok':{'criancas':cs,'licoes':[{k:v for k,v in l.items() if k!='dono'} for l in ls],'pagina':s.PAG}}
-        if op=='cobranca': return {'ok':{'assin':s.assin.get(uid),'config':s.config,'admin':uid in s.admins}}
+        if op=='cobranca': return {'ok':{'assin':s.assin.get(uid),'config':s.config,'admin':uid in s.admins,'termos':s.termos.get(uid)}}
+        if op=='consent': s.termos[uid]=a['versao']; s.consents.append((uid,a['versao'],a['origem'])); return {'ok':None}
         if op=='funcao':
             nome=a['nome']; c=a['corpo']; acao=c.get('acao')
             if nome=='assinatura' and acao=='checkout':
@@ -91,12 +92,12 @@ class Server:
         return {'erro':'op?'}
 MOCK_JS='''window.PINGO_BACKEND=(function(){const call=async(op,args)=>{const r=JSON.parse(await window.mockServer(op,JSON.stringify(args||{}),localStorage.getItem('mock.tok')||''));if(r.erro){const e=new Error(r.erro);e.status=r.status;throw e;}return r.ok;};
 return{sessao:async()=>{const u=localStorage.getItem('mock.user');return localStorage.getItem('mock.tok')&&u?JSON.parse(u):null},aoMudar:()=>{},
-criarConta:async(email,senha)=>{const r=await call('criar',{email,senha});localStorage.setItem('mock.tok',r.tok);localStorage.setItem('mock.user',JSON.stringify(r.u));return{usuario:r.u,confirmar:false}},
+criarConta:async(email,senha)=>{const r=await call('criar',{email,senha,termos:TERMOS_VERSAO});localStorage.setItem('mock.tok',r.tok);localStorage.setItem('mock.user',JSON.stringify(r.u));return{usuario:r.u,confirmar:false}},
 entrar:async(email,senha)=>{const r=await call('entrar',{email,senha});localStorage.setItem('mock.tok',r.tok);localStorage.setItem('mock.user',JSON.stringify(r.u));return r.u},
 sair:async()=>{localStorage.removeItem('mock.tok');localStorage.removeItem('mock.user')},recuperar:async()=>{},novaSenha:async()=>{},
 baixar:c=>call('baixar',{cursor:c}),enviarCriancas:rows=>call('upC',{rows}),enviarLicoes:rows=>call('upL',{rows}),apagarCriancas:ids=>call('delC',{ids}),
 excluirConta:async()=>{await call('funcao',{nome:'assinatura',corpo:{acao:'excluir_conta'}});localStorage.removeItem('mock.tok');localStorage.removeItem('mock.user')},
-cobranca:()=>call('cobranca'),funcao:async(nome,corpo)=>{try{return await call('funcao',{nome,corpo})}catch(e){e.daFuncao=true;throw e}}}})();'''
+cobranca:()=>call('cobranca'),registrarConsentimento:o=>call('consent',{versao:TERMOS_VERSAO,origem:o}),funcao:async(nome,corpo)=>{try{return await call('funcao',{nome,corpo})}catch(e){e.daFuncao=true;throw e}}}})();'''
 S=Server(); errs=[]
 async def device(br,name):
     ctx=await br.new_context(viewport={'width':1180,'height':820},service_workers='block')
@@ -133,8 +134,11 @@ async def main():
         check(await A.locator('[data-act=contaVoltar]').count()==0,'sem login: não há botão Voltar para escapar')
         await A.click('[data-act=contaModo][data-m=criar]')
         await A.fill('input[name=email]','pai@x.com'); await A.fill('input[name=senha]','12345678'); await A.click('button[type=submit]'); await idle(A,400)
-        check('confirmação' in await A.locator('[role=alert]').inner_text(),'criar conta exige marcar a confirmação de responsável')
+        check('autorização' in await A.locator('[role=alert]').inner_text(),'criar conta exige marcar a autorização do responsável')
+        check(await A.locator('form[data-form=conta] a[href="termos.html"]').count()==1 and await A.locator('form[data-form=conta] a[href="privacidade.html"]').count()==1,'cadastro tem links para termos e privacidade')
         await A.check('input[name=ok]'); await A.click('button[type=submit]'); await idle(A)
+        uidA=S.users['pai@x.com']['id']
+        check(S.consents and S.consents[-1][0]==uidA and S.consents[-1][2]=='cadastro','aceite do cadastro fica registrado no servidor')
         t=await A.locator('main').inner_text()
         check('Assine o Pingo' in t and 'R$ 49,90' in t and '7 dias grátis' in t,'conta nova sem assinatura vê a oferta com preço e teste grátis')
         await A.screenshot(path='/home/claude/pingo/test/v4_assinar.png',full_page=True)
@@ -236,6 +240,17 @@ async def main():
         await A.click('[data-act=voltarPais]'); await A.click('[data-act=voltarCrianca]')
         S.admins.discard(uid); S.assin[uid]={'status':'active','preco_centavos':4990,'periodo_fim':(hoje+datetime.timedelta(days=20)).isoformat(),'cancelar_no_fim':False,'ja_teve_teste':True}
         await A.reload(); await idle(A)
+        # conta antiga sem aceite registrado: tela de aceite antes de tudo
+        S.termos.pop(uid,None); await A.reload(); await idle(A)
+        check(await A.locator('form[data-form=aceite]').count()==1 and 'Antes de continuar' in await A.locator('main').inner_text(),'conta sem aceite vê a tela de autorização')
+        await A.screenshot(path='/home/claude/pingo/test/v6_aceite.png',full_page=True)
+        await A.click('form[data-form=aceite] button[type=submit]'); await idle(A,300)
+        check('autorização' in await A.locator('[role=alert]').inner_text() and S.termos.get(uid) is None,'sem marcar, não passa')
+        await A.check('form[data-form=aceite] input[name=ok]'); await A.click('form[data-form=aceite] button[type=submit]'); await idle(A)
+        check(await A.locator('form[data-form=aceite]').count()==0 and S.consents[-1][2]=='aceite','aceite registrado e app liberado')
+        S.termos[uid]='2020-01-01'; await A.reload(); await idle(A)
+        check('Atualizamos os termos' in await A.locator('main').inner_text(),'versão nova dos termos pede novo aceite')
+        await A.check('form[data-form=aceite] input[name=ok]'); await A.click('form[data-form=aceite] button[type=submit]'); await idle(A)
         # logoff pelo topo da área dos pais
         await pais(A); await A.click('[data-act=pedeSair] >> nth=0'); await A.screenshot(path='/home/claude/pingo/test/v3_sair.png')
         await A.click('[data-act=sairConta]'); await idle(A,800)
