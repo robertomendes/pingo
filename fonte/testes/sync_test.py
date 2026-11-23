@@ -264,4 +264,4 @@ async def main():
         check(await B.locator('form[data-form=conta]').count()==1,'B volta para a tela de login')
         print('erros JS:',errs)
         await br.close()
-asyncio.run(main())
+if __name__ == '__main__': asyncio.run(main())

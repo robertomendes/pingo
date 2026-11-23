@@ -71,8 +71,10 @@ h2{margin:0;font-size:28px;font-weight:900}
 @media (max-width:860px){.folha{grid-template-columns:1fr}}
 .quadro{background:#fff;border-radius:32px;padding:clamp(18px,3vw,36px);display:flex;flex-direction:column;gap:20px;justify-content:space-between}
 .conta{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:clamp(10px,2vw,24px);font-size:clamp(64px,10vw,124px);font-weight:900;line-height:1}
+.conta.grande{font-size:clamp(52px,7.5vw,96px)}
 .conta .op{color:var(--laranja)}.conta .igual{color:var(--cinza)}
 .pad{position:relative;width:clamp(200px,30vw,360px);height:clamp(150px,21vw,240px);border:4px dashed var(--azul);border-radius:24px;touch-action:none;background:#FBFCFF}
+.pad.larga{width:clamp(260px,40vw,460px)}
 .pad.ok{border-color:var(--verde);border-style:solid}.pad.erro{border-color:#C2410C}
 .pad canvas{position:absolute;inset:0;width:100%;height:100%;border-radius:20px}
 .pad .dica-pad{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#8A93B0;pointer-events:none;text-align:center;padding:12px}
@@ -231,7 +233,7 @@ function recognize(strokes, w, h) {
     }
     groups.push({ s: [b.s], x0: b.x0, x1: b.x1 });
   }
-  if (groups.length > 2) return { erro: 'muitos' };
+  if (groups.length > 3) return { erro: 'muitos' };
   let txt = '', conf = 1;
   for (const g of groups) { const r = NET(rasterize(g.s)); txt += r.digit; conf *= r.p; }
   return { valor: Number(txt), texto: txt, conf };
@@ -522,8 +524,6 @@ async function confirmarPagamento() {
   pagamento = { estado: null, msg: 'Ainda não recebemos a confirmação da Stripe. Se o pagamento foi aprovado, o acesso libera em instantes.', verificar: true };
   if (tela === 'assinar') render();
 }
-const HABILIDADES = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-const LICOES_POR_HAB = 2;
 const CORES = ['#FFE3C7', '#D9E4FF', '#D8F3E3', '#F6DDF0', '#FFF2B8'];
 const TXT_COR = { '#FFE3C7': '#9A3412', '#D9E4FF': '#1E3399', '#D8F3E3': '#1F6B3D', '#F6DDF0': '#8A2470', '#FFF2B8': '#6B5300' };
 
@@ -534,20 +534,118 @@ function esc(s) { return String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<
 function embaralhar(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function sequenciaAtual(c) { return c.ultimoDia === hoje() || c.ultimoDia === diaAntes(1) ? c.sequencia : 0; }
 
+/* ---------- Trilha: blocos, etapas e geração das continhas ---------- */
+const OPS = { '+': { s: '+', fala: 'mais', f: (a, b) => a + b }, '-': { s: '−', fala: 'menos', f: (a, b) => a - b }, 'x': { s: '×', fala: 'vezes', f: (a, b) => a * b } };
+function rnd(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
+function resultado(p) { return OPS[p.op || '+'].f(p.a, p.b); }
+function textoConta(p) { return p.a + ' ' + OPS[p.op || '+'].s + ' ' + p.b; }
+function falaConta(p) { return p.a + ' ' + OPS[p.op || '+'].fala + ' ' + p.b; }
+// sorteia n continhas distintas de um gerador (tenta evitar repetidas)
+function sortear(n, gera) {
+  const out = [], vistos = new Set();
+  for (let t = 0; out.length < n && t < 200; t++) { const p = gera(); const k = textoConta(p); if (vistos.has(k) && t < 150) continue; vistos.add(k); out.push(p); }
+  return out;
+}
+// contas com dezenas e centenas: tipo define se tem "vai um" / "pede emprestado"
+function dezenas(op, forma, troca, nivel) {
+  return () => {
+    for (;;) {
+      let a, b;
+      if (forma === 'du') { a = rnd(nivel ? 21 : 11, 89); b = rnd(1, 9); }
+      else if (forma === 'dd') { a = rnd(nivel ? 21 : 11, 89); b = rnd(11, op === '-' ? a - 1 : 88); }
+      else { a = rnd(nivel ? 210 : 110, 899); b = rnd(nivel >= 2 ? 101 : 11, op === '-' ? a - 1 : 899 - a > 101 ? 899 - a : 101); }
+      if (op === '-' && b >= a) continue;
+      const r = op === '+' ? a + b : a - b; if (r <= 0 || r > 999) continue;
+      const ua = a % 10, ub = b % 10;
+      const tem = op === '+' ? ua + ub >= 10 : ua < ub;
+      if (forma === 'ddd') { if (nivel === 0 && (tem || (op === '+' ? (Math.floor(a / 10) % 10 + Math.floor(b / 10) % 10 >= 10) : (Math.floor(a / 10) % 10 < Math.floor(b / 10) % 10)))) continue; }
+      else if (tem !== troca) continue;
+      if (forma === 'dd' && !troca && op === '+' && Math.floor(a / 10) + Math.floor(b / 10) > 9) continue;
+      if (forma === 'dd' && troca && op === '+' && a + b > 99) continue;
+      return { a, b, op };
+    }
+  };
+}
+const BLOCOS = [
+  { id: 'soma20', titulo: 'Adição até 20' },
+  { id: 'sub20', titulo: 'Subtração até 20' },
+  { id: 'maiores', titulo: 'Contas maiores' },
+  { id: 'tabuada', titulo: 'Tabuada' },
+];
+const ETAPAS = [];
+// Bloco 1: somando 1 a 9 (resultado até 20). A 3ª lição revisa as etapas anteriores.
+for (let n = 1; n <= 9; n++) ETAPAS.push({
+  bloco: 0, nome: 'Somando ' + n, curto: '+' + n, licoes: 3,
+  gerar: nivel => sortear(5, () => {
+    if (nivel >= 2 && n > 1 && Math.random() < 0.3) { const m = rnd(1, n - 1), a = rnd(2, 10); return Math.random() < 0.5 ? { a, b: m, op: '+' } : { a: m, b: a, op: '+' }; }
+    const a = nivel === 0 ? rnd(1, 9) : rnd(3, Math.min(11, 20 - n));
+    return nivel > 0 && Math.random() < 0.3 ? { a: n, b: a, op: '+' } : { a, b: n, op: '+' };
+  }),
+});
+// Bloco 2: tirando 1 a 9 (números até 20) e uma revisão misturando mais e menos.
+for (let n = 1; n <= 9; n++) ETAPAS.push({
+  bloco: 1, nome: 'Tirando ' + n, curto: '−' + n, licoes: 3,
+  gerar: nivel => sortear(5, () => {
+    if (nivel >= 2 && n > 1 && Math.random() < 0.3) { const m = rnd(1, n - 1); return { a: m + rnd(1, 10), b: m, op: '-' }; }
+    const d = nivel === 0 ? rnd(1, 9) : rnd(2, 10);
+    return { a: n + d, b: n, op: '-' };
+  }),
+});
+ETAPAS.push({
+  bloco: 1, nome: 'Mais e menos', curto: '±', licoes: 3,
+  gerar: () => sortear(5, () => { const n = rnd(2, 9), x = rnd(2, 10); return Math.random() < 0.5 ? { a: x, b: n, op: '+' } : { a: n + x, b: n, op: '-' }; }),
+});
+// Bloco 3: dezenas e centenas, primeiro sem e depois com "vai um" / "pede emprestado".
+[
+  ['Dezena + unidade', '+', 'du', false], ['Somando com vai um', '+', 'du', true],
+  ['Dezena + dezena', '+', 'dd', false], ['Dezenas com vai um', '+', 'dd', true],
+  ['Dezena − unidade', '-', 'du', false], ['Tirando com empréstimo', '-', 'du', true],
+  ['Dezena − dezena', '-', 'dd', false], ['Dezenas com empréstimo', '-', 'dd', true],
+  ['Somando centenas', '+', 'ddd', true], ['Tirando de centenas', '-', 'ddd', true],
+].forEach(([nome, op, forma, troca], i) => ETAPAS.push({
+  bloco: 2, nome, curto: forma === 'ddd' ? (op === '+' ? '+100' : '−100') : (op === '+' ? '+' : '−') + (forma === 'du' ? 'U' : 'D'), licoes: 5,
+  gerar: nivel => sortear(5, dezenas(op, forma, troca, Math.min(nivel, 2))),
+}));
+// Bloco 4: tabuada do 2 ao 10 e uma revisão misturada.
+for (let n = 2; n <= 10; n++) ETAPAS.push({
+  bloco: 3, nome: 'Tabuada do ' + n, curto: '×' + n, licoes: 5,
+  gerar: nivel => {
+    if (nivel === 0) return embaralhar([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]).slice(0, 5).sort((x, y) => x - y).map(b => ({ a: n, b, op: 'x' }));
+    return sortear(5, () => {
+      if (nivel >= 3 && n > 2 && Math.random() < 0.3) return { a: rnd(2, n - 1), b: rnd(2, 10), op: 'x' };
+      const b = nivel === 1 ? rnd(1, 10) : rnd(3, 10);
+      return nivel >= 2 && Math.random() < 0.4 ? { a: b, b: n, op: 'x' } : { a: n, b, op: 'x' };
+    });
+  },
+});
+ETAPAS.push({ bloco: 3, nome: 'Tabuada misturada', curto: '×?', licoes: 5, gerar: () => sortear(5, () => ({ a: rnd(2, 10), b: rnd(2, 10), op: 'x' })) });
+function etapa(i) { return ETAPAS[Math.max(0, Math.min(ETAPAS.length - 1, i | 0))]; }
+
+
 function novaLicao(c) {
-  const n = HABILIDADES[c.hab], nivel = c.nivel;
-  const minA = nivel === 0 ? 1 : 3, maxA = Math.min(20 - n, nivel === 0 ? 9 : 11);
-  let pool = []; for (let a = minA; a <= maxA; a++) pool.push(a);
-  pool = embaralhar(pool);
-  while (pool.length < 5) pool.push(pool[pool.length % (maxA - minA + 1)]);
-  const probs = pool.slice(0, 5).map(a => (nivel > 0 && Math.random() < 0.3) ? { a: n, b: a } : { a, b: n });
+  const e = etapa(c.hab), nivel = Math.min(c.nivel, e.licoes - 1);
+  const probs = e.gerar(nivel);
   return { hab: c.hab, nivel, probs, i: 0, itens: [], inicio: Date.now(), inicioItem: Date.now(), tentativas: [], status: 'escrever', valorDuvida: null, digitado: '' };
 }
 
-function dica(a, b) {
-  const s = a + b, g = Math.max(a, b), p = Math.min(a, b);
-  if (s > 10 && g < 10) { const f = 10 - g; return 'Dica: complete o 10. ' + g + ' + ' + f + ' = 10, e ainda faltam ' + (p - f) + '.'; }
-  return 'Dica: comece no ' + g + ' e conte mais ' + p + (p <= 5 ? ' nos dedinhos.' : '.');
+function dica(p) {
+  const a = p.a, b = p.b, op = p.op || '+';
+  if (op === 'x') {
+    if (b <= 5) return 'Dica: ' + a + ' × ' + b + ' é somar o ' + a + ' ' + b + (b === 1 ? ' vez' : ' vezes') + ': ' + Array(b).fill(a).join(' + ') + '.';
+    return 'Dica: ' + a + ' × ' + (b - 1) + ' = ' + a * (b - 1) + '. Agora é só somar mais ' + a + '.';
+  }
+  if (op === '-') {
+    if (a <= 20) return 'Dica: comece no ' + a + ' e volte ' + b + '. Ou pense: ' + b + ' mais quanto dá ' + a + '?';
+    if (a % 10 < b % 10) return 'Dica: comece pelas unidades. ' + (a % 10) + ' é menor que ' + (b % 10) + ', então pegue 1 dezena emprestada: vira ' + (a % 10 + 10) + ' − ' + (b % 10) + '.';
+    return 'Dica: tire as unidades primeiro (' + (a % 10) + ' − ' + (b % 10) + ') e depois as dezenas.';
+  }
+  const s = a + b, g = Math.max(a, b), q = Math.min(a, b);
+  if (s <= 20) {
+    if (s > 10 && g < 10) { const f = 10 - g; return 'Dica: complete o 10. ' + g + ' + ' + f + ' = 10, e ainda faltam ' + (q - f) + '.'; }
+    return 'Dica: comece no ' + g + ' e conte mais ' + q + (q <= 5 ? ' nos dedinhos.' : '.');
+  }
+  if (a % 10 + b % 10 >= 10) return 'Dica: some as unidades: ' + (a % 10) + ' + ' + (b % 10) + ' = ' + (a % 10 + b % 10) + '. Fica o ' + ((a + b) % 10) + ' e vai um para as dezenas.';
+  return 'Dica: some as unidades (' + (a % 10) + ' + ' + (b % 10) + ') e depois as dezenas.';
 }
 
 function falar(t) { try { if (!window.speechSynthesis) return; const u = new SpeechSynthesisUtterance(t); u.lang = 'pt-BR'; u.rate = 0.9; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (e) { } }
@@ -633,40 +731,43 @@ VIEWS.novo = function () { return '<main class="tela" style="max-width:640px">' 
 
 VIEWS.inicio = function () {
   const c = crianca(); if (!c) return VIEWS.perfis();
-  const n = HABILIDADES[c.hab], fezHoje = c.ultimoDia === hoje(), seq = sequenciaAtual(c);
-  const terminou = c.hab === HABILIDADES.length - 1 && c.nivel >= LICOES_POR_HAB;
-  const fala = terminou ? 'Uau, ' + esc(c.nome) + '! Você terminou a trilha de adição até 20. Vamos revisar?' :
+  const e = etapa(c.hab), fezHoje = c.ultimoDia === hoje(), seq = sequenciaAtual(c);
+  const terminou = c.hab === ETAPAS.length - 1 && c.nivel >= e.licoes;
+  const fala = terminou ? 'Uau, ' + esc(c.nome) + '! Você terminou a trilha inteira do Pingo. Vamos revisar?' :
     fezHoje ? 'Você já fez a lição de hoje, ' + esc(c.nome) + '! Quer treinar mais um pouquinho?' :
-      'Oi, ' + esc(c.nome) + '! Hoje tem continhas de <b style="color:#2F4BC7">mais ' + n + '</b>. Bora?';
+      'Oi, ' + esc(c.nome) + '! Hoje tem <b style="color:#2F4BC7">' + esc(e.nome) + '</b>. Bora?';
+  const blocoAtual = e.bloco, idsBloco = ETAPAS.map((x, i) => i).filter(i => ETAPAS[i].bloco === blocoAtual);
   return '<main class="tela"><div class="topo"><div class="marca">' + gota(36) + 'Pingo</div><div class="chips">' +
     '<span class="chip">' + IC.chama + seq + (seq === 1 ? ' dia seguido' : ' dias seguidos') + '</span>' +
     '<span class="chip">' + IC.estrela() + c.estrelas + ' estrelas</span>' +
     '<button class="chip" data-act="trocar" aria-label="Trocar de criança" style="padding:6px 16px 6px 6px">' + avatar(c) + esc(c.nome) + '</button></div></div>' +
     '<div class="grade"><section class="heroi"><div style="display:flex;align-items:flex-end;gap:16px">' + mascote(140) + '<div class="fala" style="margin-bottom:36px">' + fala + '</div></div>' +
     '<div style="display:flex;flex-direction:column;gap:14px"><h1>' + (fezHoje ? 'Treino extra' : 'Lição de hoje') + '</h1>' +
-    '<p style="margin:0;font-size:20px;font-weight:700">5 continhas · Somando ' + n + ' · lição ' + Math.min(c.nivel + 1, LICOES_POR_HAB) + ' de ' + LICOES_POR_HAB + '</p>' +
+    '<p style="margin:0;font-size:20px;font-weight:700">5 continhas · ' + esc(e.nome) + ' · lição ' + Math.min(c.nivel + 1, e.licoes) + ' de ' + e.licoes + '</p>' +
     '<button class="btn btn-laranja" data-act="comecar" data-foco>' + IC.play + 'Começar</button></div></section>' +
-    '<section class="cartao"><p class="rotulo">Minha trilha</p><h2 style="margin-top:4px">Adição até 20</h2><ol class="trilha">' +
-    HABILIDADES.map((h, i) => {
-      const cls = i < c.hab || (i === c.hab && c.nivel >= LICOES_POR_HAB) ? 'feito' : i === c.hab ? 'atual' : '';
+    '<section class="cartao"><p class="rotulo">Minha trilha · parte ' + (blocoAtual + 1) + ' de ' + BLOCOS.length + '</p><h2 style="margin-top:4px">' + BLOCOS[blocoAtual].titulo + '</h2>' +
+    '<p class="peq" style="margin:4px 0 0">' + (blocoAtual + 1 < BLOCOS.length ? 'Depois vem: ' + BLOCOS.slice(blocoAtual + 1).map(b => b.titulo).join(', ') + '.' : 'Última parte da trilha!') + '</p><ol class="trilha">' +
+    idsBloco.map(i => {
+      const h = ETAPAS[i];
+      const cls = i < c.hab || (i === c.hab && c.nivel >= h.licoes) ? 'feito' : i === c.hab ? 'atual' : '';
       const st = cls === 'feito' ? '<span class="status" style="color:#1F7A45">Concluído</span>' : cls === 'atual' ? '<span class="status" style="color:#9A3412">Você está aqui</span>' : '<span class="status" style="color:#4A5375" aria-label="Bloqueado">' + IC.cadeado + '</span>';
-      return '<li class="' + cls + '"><span class="bola">+' + h + '</span><span class="nome">Somando ' + h + '</span>' + st + '</li>';
+      return '<li class="' + cls + '"><span class="bola">' + esc(h.curto) + '</span><span class="nome">' + esc(h.nome) + '</span>' + st + '</li>';
     }).join('') + '</ol></section></div>' +
     '<button class="link-pais" data-act="abrirPais">' + IC.cadeado + 'Área dos pais</button></main>';
 };
 
 VIEWS.folha = function () {
-  const L = licao, p = L.probs[L.i], c = crianca(), soma = p.a + p.b;
+  const L = licao, p = L.probs[L.i], c = crianca(), soma = resultado(p), sim = OPS[p.op || '+'].s, grande = Math.max(p.a, p.b, soma) >= 100;
   const pontos = L.probs.map((_, i) => { const it = L.itens[i]; return '<span class="' + (it ? (it.deprimeira ? 'ok' : 'erro') : i === L.i ? 'agora' : '') + '"></span>'; }).join('');
   const teclado = c.teclado;
   let resposta;
   if (teclado) resposta = '<div class="visor" style="font-size:clamp(64px,9vw,110px)" aria-label="Sua resposta">' + esc(L.digitado || '') + '</div>';
-  else resposta = '<div class="pad ' + (L.status === 'ok' ? 'ok' : L.status === 'erro' ? 'erro' : '') + '" id="pad"><canvas aria-label="Quadro para escrever a resposta"></canvas>' + (tracos.length ? '' : '<div class="dica-pad">escreva aqui</div>') + '</div>';
+  else resposta = '<div class="pad ' + (soma >= 100 ? 'larga ' : '') + (L.status === 'ok' ? 'ok' : L.status === 'erro' ? 'erro' : '') + '" id="pad"><canvas aria-label="Quadro para escrever a resposta"></canvas>' + (tracos.length ? '' : '<div class="dica-pad">escreva aqui</div>') + '</div>';
   let aviso = '';
-  if (L.status === 'ok') aviso = '<div class="aviso aviso-ok" role="status">' + IC.check + '<div class="txt"><p class="tit">Acertou!</p><p>' + p.a + ' + ' + p.b + ' = ' + soma + '. ' + (L.tentativas.length === 1 ? 'Mandou bem!' : 'Persistência é tudo!') + '</p></div>' +
+  if (L.status === 'ok') aviso = '<div class="aviso aviso-ok" role="status">' + IC.check + '<div class="txt"><p class="tit">Acertou!</p><p>' + textoConta(p) + ' = ' + soma + '. ' + (L.tentativas.length === 1 ? 'Mandou bem!' : 'Persistência é tudo!') + '</p></div>' +
     '<button class="btn btn-verde" data-act="proxima" data-foco>' + (L.i === L.probs.length - 1 ? 'Terminar' : 'Próxima') + '</button></div>';
-  else if (L.status === 'erro') aviso = '<div class="aviso aviso-erro" role="status">' + mascote(56, 'pensa') + '<div class="txt"><p class="tit">Quase! Vamos de novo?</p><p>' + dica(p.a, p.b) + '</p></div></div>';
-  else if (L.status === 'revela') aviso = '<div class="aviso aviso-erro" role="status">' + mascote(56, 'pensa') + '<div class="txt"><p class="tit">' + p.a + ' + ' + p.b + ' = ' + soma + '</p><p>Essa era difícil. Na próxima você consegue!</p></div><button class="btn btn-verde" data-act="proxima" data-foco>' + (L.i === L.probs.length - 1 ? 'Terminar' : 'Próxima') + '</button></div>';
+  else if (L.status === 'erro') aviso = '<div class="aviso aviso-erro" role="status">' + mascote(56, 'pensa') + '<div class="txt"><p class="tit">Quase! Vamos de novo?</p><p>' + dica(p) + '</p></div></div>';
+  else if (L.status === 'revela') aviso = '<div class="aviso aviso-erro" role="status">' + mascote(56, 'pensa') + '<div class="txt"><p class="tit">' + textoConta(p) + ' = ' + soma + '</p><p>Essa era difícil. Na próxima você consegue!</p></div><button class="btn btn-verde" data-act="proxima" data-foco>' + (L.i === L.probs.length - 1 ? 'Terminar' : 'Próxima') + '</button></div>';
   else if (L.status === 'duvida') aviso = '<div class="aviso aviso-neutro" role="status"><div class="txt"><p class="tit">Você escreveu ' + esc(L.valorDuvida.texto) + '?</p></div><button class="btn btn-verde btn-pequeno" data-act="duvidaSim">Sim</button><button class="btn btn-claro btn-pequeno" data-act="duvidaNao">Não, vou escrever de novo</button></div>';
   else if (L.status === 'aviso') aviso = '<div class="aviso aviso-neutro" role="status"><p class="txt">' + L.msg + '</p></div>';
   else aviso = '<p class="instrucao">' + (teclado ? 'Toque nos números e depois em Conferir.' : 'Escreva o resultado no quadradinho e toque em Conferir.') + '</p>';
@@ -679,8 +780,8 @@ VIEWS.folha = function () {
     '<button class="btn btn-claro btn-pequeno" data-act="modo">' + (teclado ? IC.lapis + 'Prefiro escrever' : IC.teclado + 'Prefiro teclado') + '</button>' +
     '<button class="btn btn-laranja" data-act="conferir" style="margin-top:auto"' + (travado ? ' disabled' : '') + '>Conferir</button></section>';
   return '<main class="tela"><div class="barra"><button class="icone" data-act="sair" aria-label="Sair da lição">' + IC.voltar + '</button>' +
-    '<div class="progresso"><div class="linha"><span>Somando ' + HABILIDADES[L.hab] + '</span><span style="color:#4A5375">Continha ' + (L.i + 1) + ' de ' + L.probs.length + '</span></div><div class="pontos">' + pontos + '</div></div></div>' +
-    '<div class="folha"><section class="quadro"><div class="conta" aria-label="Quanto é ' + p.a + ' mais ' + p.b + '?"><span>' + p.a + '</span><span class="op">+</span><span>' + p.b + '</span><span class="igual">=</span>' + resposta + '</div>' + aviso + '</section>' + lado + '</div></main>';
+    '<div class="progresso"><div class="linha"><span>' + esc(etapa(L.hab).nome) + '</span><span style="color:#4A5375">Continha ' + (L.i + 1) + ' de ' + L.probs.length + '</span></div><div class="pontos">' + pontos + '</div></div></div>' +
+    '<div class="folha"><section class="quadro"><div class="conta' + (grande ? ' grande' : '') + '" aria-label="Quanto é ' + falaConta(p) + '?"><span>' + p.a + '</span><span class="op">' + sim + '</span><span>' + p.b + '</span><span class="igual">=</span>' + resposta + '</div>' + aviso + '</section>' + lado + '</div></main>';
 };
 
 VIEWS.fim = function () {
@@ -689,9 +790,10 @@ VIEWS.fim = function () {
   const praticou = new Set(c.historico.map(l => l.dia));
   const nomes = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
   let msg;
-  if (f.subiu && f.terminouTudo) msg = 'Você completou a trilha inteira de adição até 20!';
-  else if (f.subiu) msg = 'Você destravou o Somando ' + HABILIDADES[c.hab] + '!';
-  else if (f.passou) msg = 'Falta só mais 1 lição para destravar o próximo número.';
+  const faltam = etapa(c.hab).licoes - c.nivel;
+  if (f.subiu && f.terminouTudo) msg = 'Você completou a trilha inteira do Pingo!';
+  else if (f.subiu) msg = (f.novoBloco ? 'Parte nova: ' + BLOCOS[etapa(c.hab).bloco].titulo + '! ' : '') + 'Você destravou: ' + etapa(c.hab).nome + '!';
+  else if (f.passou) msg = 'Falta' + (faltam === 1 ? ' só mais 1 lição' : 'm mais ' + faltam + ' lições') + ' para destravar a próxima etapa.';
   else msg = 'Amanhã a gente treina essas de novo. Cada dia fica mais fácil!';
   return '<main class="tela"><div class="grade" style="align-items:center;flex:0"><section style="display:flex;flex-direction:column;align-items:center;gap:18px;text-align:center">' +
     '<div class="estrelas">' + [0, 1, 2].map(i => i < f.estrelas ? IC.estrela(i === 1 ? 90 : 68) : '<svg width="' + (i === 1 ? 90 : 68) + '" height="' + (i === 1 ? 90 : 68) + '" viewBox="0 0 24 24" fill="none" stroke="#9FB0EA" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z"/></svg>').join('') + '</div>' +
@@ -915,7 +1017,7 @@ function resumo(c) {
   const pct = itens.length ? Math.round(100 * itens.filter(i => i.deprimeira).length / itens.length) : 0;
   const errosHab = {}; const errosConta = {};
   for (const l of c.historico.slice(-10)) for (const it of l.itens) if (!it.deprimeira) {
-    errosHab[l.hab] = (errosHab[l.hab] || 0) + 1; const k = it.a + ' + ' + it.b; errosConta[k] = (errosConta[k] || 0) + 1;
+    errosHab[l.hab] = (errosHab[l.hab] || 0) + 1; const k = textoConta(it); errosConta[k] = (errosConta[k] || 0) + 1;
   }
   const pior = Object.keys(errosHab).sort((a, b) => errosHab[b] - errosHab[a])[0];
   const contas = Object.keys(errosConta).sort((a, b) => errosConta[b] - errosConta[a]).slice(0, 3);
@@ -954,18 +1056,23 @@ VIEWS.pais = function () {
     '<button class="chip" data-act="novaCrianca">+ Adicionar criança</button></div>';
   const r = resumo(c);
   html += '<section class="heroi" style="gap:14px;border-radius:24px;min-height:0"><p style="margin:0;font-size:15px;font-weight:800">Últimos 7 dias</p><p style="margin:0;font-size:24px;font-weight:900;line-height:1.25">' +
-    (r.sem.length ? esc(c.nome) + ' praticou ' + r.dias + ' de 7 dias e está no Somando ' + HABILIDADES[c.hab] + '.' : esc(c.nome) + ' ainda não praticou nesta semana.') + '</p>' +
+    (r.sem.length ? esc(c.nome) + ' praticou ' + r.dias + ' de 7 dias e está em ' + esc(etapa(c.hab).nome) + ' (' + esc(BLOCOS[etapa(c.hab).bloco].titulo) + ').' : esc(c.nome) + ' ainda não praticou nesta semana.') + '</p>' +
     '<div class="metricas"><div class="metrica"><b>' + (r.min >= 1 ? r.min + ' min' : (r.sem.length ? '&lt;1 min' : '0 min')) + '</b><span>de prática</span></div><div class="metrica"><b>' + r.pct + '%</b><span>de acertos de primeira</span></div><div class="metrica"><b>' + r.itens.length + '</b><span>continhas</span></div><div class="metrica"><b>' + sequenciaAtual(c) + '</b><span>' + (sequenciaAtual(c) === 1 ? 'dia seguido' : 'dias seguidos') + '</span></div></div></section>';
   if (r.pior != null) {
-    const cruza = r.contas.some(k => { const [a, b] = k.split(' + ').map(Number); return a + b > 10 && Math.max(a, b) < 10; });
-    html += '<section class="aviso aviso-erro" style="align-items:flex-start;border-radius:24px"><div class="txt"><p class="tit" style="font-size:19px">Ponto de atenção: somar ' + HABILIDADES[r.pior] + '</p>' +
+    const ep = etapa(r.pior), op = (ETAPAS.indexOf(ep) < 9 ? '+' : ep.bloco === 3 ? 'x' : ep.bloco === 1 ? '-' : 'g');
+    const cruza = r.contas.some(k => { const m = k.match(/^(\d+) \+ (\d+)$/); return m && +m[1] + +m[2] > 10 && Math.max(+m[1], +m[2]) < 10; });
+    const ajuda = op === 'x' ? 'recitem juntos a tabuada em voz alta, de trás para frente também, e usem grupos de objetos (3 pratinhos com 4 uvas = 3 × 4).' :
+      op === '-' ? 'use objetos para tirar de verdade, ou pergunte "quanto falta para chegar?" (de 6 para 9 faltam 3).' :
+      op === 'g' ? 'monte as contas com dinheirinho de brinquedo ou palitos: 10 unidades viram 1 dezena (o famoso vai um).' :
+      cruza ? 'brinque de completar o 10 com tampinhas ou com os dedos (ex.: 7 + 5 vira 7 + 3 + 2). Cinco minutos já ajudam.' : 'conte junto a partir do número maior, sem recomeçar do 1.';
+    html += '<section class="aviso aviso-erro" style="align-items:flex-start;border-radius:24px"><div class="txt"><p class="tit" style="font-size:19px">Ponto de atenção: ' + esc(ep.nome) + '</p>' +
       '<p style="margin-top:4px;font-weight:600">Contas que mais deram trabalho: ' + r.contas.map(esc).join(', ') + '.</p>' +
-      '<p style="margin-top:6px">Como ajudar: ' + (cruza ? 'brinque de completar o 10 com tampinhas ou com os dedos (ex.: 7 + 5 vira 7 + 3 + 2). Cinco minutos já ajudam.' : 'conte junto a partir do número maior, sem recomeçar do 1.') + '</p></div></section>';
+      '<p style="margin-top:6px">Como ajudar: ' + ajuda + '</p></div></section>';
   } else if (r.sem.length) html += '<section class="aviso aviso-ok" style="border-radius:24px"><p class="txt">Nenhum ponto de atenção nas últimas lições. Siga o ritmo!</p></section>';
   const ult = c.historico.slice(-10).reverse();
   html += '<section class="cartao"><h2 style="font-size:22px;margin-bottom:12px">Últimas lições</h2><div class="lista">' + (ult.length ? ult.map(l => {
     const ok = l.itens.filter(i => i.deprimeira).length;
-    return '<div class="item"><span class="tag" style="background:' + (ok >= 4 ? '#EAF6EF;color:#1F7A45' : '#FFF1E3;color:#9A3412') + '">+' + HABILIDADES[l.hab] + '</span><div class="info"><p style="font-weight:800">Somando ' + HABILIDADES[l.hab] + '</p><p class="peq">' + dataBonita(l.dia) + ' · ' + ok + ' de 5 de primeira · ' + Math.max(1, Math.round(l.ms / 60000)) + ' min</p></div>' +
+    return '<div class="item"><span class="tag" style="background:' + (ok >= 4 ? '#EAF6EF;color:#1F7A45' : '#FFF1E3;color:#9A3412') + '">' + esc(etapa(l.hab).curto) + '</span><div class="info"><p style="font-weight:800">' + esc(etapa(l.hab).nome) + '</p><p class="peq">' + dataBonita(l.dia) + ' · ' + ok + ' de 5 de primeira · ' + Math.max(1, Math.round(l.ms / 60000)) + ' min</p></div>' +
       '<button class="btn btn-claro btn-pequeno" data-act="replay" data-id="' + l.id + '" aria-label="Ver replay da lição de ' + dataBonita(l.dia) + '">Replay</button></div>';
   }).join('') : '<p class="peq" style="margin:0">As lições aparecem aqui depois da primeira prática.</p>') + '</div></section>';
   html += cartaoAssinatura();
@@ -1021,17 +1128,17 @@ function montarPad() {
 
 /* ---------- Lógica da lição ---------- */
 function avaliar(valor) {
-  const L = licao, p = L.probs[L.i], soma = p.a + p.b;
+  const L = licao, p = L.probs[L.i], soma = resultado(p);
   L.tentativas.push({ valor, tracos: tracos.slice(), aspecto: padTam.w / padTam.h });
   if (valor === soma) { L.status = 'ok'; falar(L.tentativas.length === 1 ? 'Acertou!' : 'Isso! Acertou!'); }
-  else if (L.tentativas.length >= 3) { L.status = 'revela'; falar(p.a + ' mais ' + p.b + ' é ' + soma); }
+  else if (L.tentativas.length >= 3) { L.status = 'revela'; falar(falaConta(p) + ' é ' + soma); }
   else { L.status = 'erro'; tracos = []; L.digitado = ''; falar('Quase! Vamos de novo?'); }
   render();
 }
 
 function fecharItem() {
   const L = licao, p = L.probs[L.i];
-  L.itens.push({ a: p.a, b: p.b, deprimeira: L.tentativas.length === 1 && L.status === 'ok', acertou: L.status === 'ok', ms: Date.now() - L.inicioItem, tentativas: L.tentativas.map(t => ({ v: t.valor, t: t.tracos, r: Math.round(t.aspecto * 100) / 100 })) });
+  L.itens.push({ a: p.a, b: p.b, op: p.op || '+', deprimeira: L.tentativas.length === 1 && L.status === 'ok', acertou: L.status === 'ok', ms: Date.now() - L.inicioItem, tentativas: L.tentativas.map(t => ({ v: t.valor, t: t.tracos, r: Math.round(t.aspecto * 100) / 100 })) });
 }
 
 function terminarLicao() {
@@ -1041,14 +1148,15 @@ function terminarLicao() {
   const estrelas = dp === 5 ? 3 : dp >= 4 ? 2 : 1;
   const d = hoje();
   const passou = dp >= 4; let subiu = false, terminouTudo = false;
-  if (passou && L.hab === c.hab && c.nivel < LICOES_POR_HAB) {
+  let novoBloco = false;
+  if (passou && L.hab === c.hab && c.nivel < etapa(c.hab).licoes) {
     c.nivel++;
-    if (c.nivel >= LICOES_POR_HAB) { if (c.hab < HABILIDADES.length - 1) { c.hab++; c.nivel = 0; } else terminouTudo = true; subiu = true; }
+    if (c.nivel >= etapa(c.hab).licoes) { if (c.hab < ETAPAS.length - 1) { const b0 = etapa(c.hab).bloco; c.hab++; c.nivel = 0; novoBloco = etapa(c.hab).bloco !== b0; } else terminouTudo = true; subiu = true; }
     marcar(c);
   }
   c.historico.push({ id: novoId('lic'), ts: Date.now(), dia: d, hab: L.hab, itens: L.itens, ms: Date.now() - L.inicio, estrelas, sinc: false });
   recalcular(c); salvar(); agendarSinc(400);
-  fimInfo = { deprimeira: dp, estrelas, passou, subiu, terminouTudo };
+  fimInfo = { deprimeira: dp, estrelas, passou, subiu, terminouTudo, novoBloco };
   licao = null; tracos = [];
   ir('fim');
   falar('Lição feita! Você ganhou ' + estrelas + (estrelas === 1 ? ' estrela' : ' estrelas'));
@@ -1058,10 +1166,10 @@ function terminarLicao() {
 function abrirReplay(id) {
   const c = db.criancas.find(x => x.id === paisAba); const l = c && c.historico.find(x => x.id === id); if (!l) return;
   modal = function () {
-    return '<div class="modal" role="dialog" aria-modal="true" aria-label="Replay da lição"><div class="caixa"><div class="topo"><h2 style="font-size:22px">Replay · Somando ' + HABILIDADES[l.hab] + ' · ' + dataBonita(l.dia) + '</h2><button class="btn btn-claro btn-pequeno" data-act="fecharModal" data-foco>Fechar</button></div>' +
+    return '<div class="modal" role="dialog" aria-modal="true" aria-label="Replay da lição"><div class="caixa"><div class="topo"><h2 style="font-size:22px">Replay · ' + esc(etapa(l.hab).nome) + ' · ' + dataBonita(l.dia) + '</h2><button class="btn btn-claro btn-pequeno" data-act="fecharModal" data-foco>Fechar</button></div>' +
       '<div class="replays">' + l.itens.map((it, i) => {
         const ult = it.tentativas[it.tentativas.length - 1];
-        return '<div class="replay"><p style="margin:0;font-size:18px;font-weight:900">' + it.a + ' + ' + it.b + ' = ' + (it.a + it.b) + '</p>' +
+        return '<div class="replay"><p style="margin:0;font-size:18px;font-weight:900">' + textoConta(it) + ' = ' + resultado(it) + '</p>' +
           (ult && ult.t && ult.t.length ? '<canvas data-rp="' + i + '"></canvas>' : '<p class="peq" style="margin:0">' + (ult ? 'Respondeu pelo teclado: ' + ult.v : 'Sem traçado salvo') + '</p>') +
           '<p class="peq" style="margin:0">' + (it.deprimeira ? '<span class="ok-txt">Acertou de primeira</span>' : it.acertou ? '<span class="erro-txt">Acertou na ' + it.tentativas.length + 'ª tentativa</span>' : '<span class="erro-txt">Não acertou</span>') +
           ' · respostas: ' + it.tentativas.map(t => t.v).join(', ') + ' · ' + Math.round(it.ms / 1000) + ' s</p></div>';
@@ -1092,10 +1200,10 @@ const ACOES = {
   escolher: d => { db.ativa = d.id; salvar(); ir('inicio'); },
   trocar: () => ir('perfis'),
   voltarPerfis: () => ir(db.criancas.length ? (paisAba ? 'pais' : 'perfis') : 'boasvindas'),
-  comecar: () => { licao = novaLicao(crianca()); tracos = []; ir('folha'); falar('Quanto é ' + licao.probs[0].a + ' mais ' + licao.probs[0].b + '?'); },
-  ouvir: () => { const p = licao.probs[licao.i]; falar('Quanto é ' + p.a + ' mais ' + p.b + '?'); },
+  comecar: () => { licao = novaLicao(crianca()); tracos = []; ir('folha'); falar('Quanto é ' + falaConta(licao.probs[0]) + '?'); },
+  ouvir: () => { const p = licao.probs[licao.i]; falar('Quanto é ' + falaConta(p) + '?'); },
   apagar: () => { const L = licao; if (crianca().teclado) L.digitado = L.digitado.slice(0, -1); else tracos = []; if (L.status !== 'ok') L.status = 'escrever'; render(); },
-  tecla: d => { const L = licao; L.digitado = (L.digitado + d.k).slice(-2); L.status = 'escrever'; render(); },
+  tecla: d => { const L = licao; L.digitado = (L.digitado + d.k).slice(-3); L.status = 'escrever'; render(); },
   modo: () => { const c = crianca(); c.teclado = !c.teclado; marcar(c); salvar(); agendarSinc(); tracos = []; licao.digitado = ''; licao.status = 'escrever'; render(); },
   conferir: () => {
     const L = licao, c = crianca();
@@ -1113,7 +1221,7 @@ const ACOES = {
     fecharItem(); const L = licao;
     if (L.i >= L.probs.length - 1) return terminarLicao();
     L.i++; L.tentativas = []; L.status = 'escrever'; L.digitado = ''; L.inicioItem = Date.now(); tracos = []; render();
-    falar('Quanto é ' + L.probs[L.i].a + ' mais ' + L.probs[L.i].b + '?');
+    falar('Quanto é ' + falaConta(L.probs[L.i]) + '?');
   },
   sair: () => { licao = null; tracos = []; ir('inicio'); },
   inicio: () => ir('inicio'),
@@ -1223,7 +1331,7 @@ app.addEventListener('submit', e => {
 });
 app.addEventListener('keydown', e => { if (e.key === 'Escape' && modal) { modal = null; render(); } });
 
-window.PINGO_TEST = { recognize, rasterize, NET, novaLicao, dica, mesclar, temAcesso, get db() { return db; } };
+window.PINGO_TEST = { recognize, rasterize, NET, novaLicao, dica, mesclar, temAcesso, ETAPAS, BLOCOS, resultado, salvar, get db() { return db; } };
 window.addEventListener('online', () => agendarSinc(200));
 window.addEventListener('offline', () => { db.estadoSinc = 'offline'; atualizarSelo(); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') agendarSinc(1000); });

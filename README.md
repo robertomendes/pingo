@@ -2,7 +2,7 @@
 
 App de prática diária para crianças de 4 a 10 anos: a criança escreve a resposta com o dedo ou a caneta e o app corrige na hora, com reconhecimento de dígitos rodando no próprio aparelho.
 
-**v0.6** — Termos de uso e Política de privacidade (LGPD e ECA Digital), autorização do responsável registrada no cadastro e aceite obrigatório para contas antigas. **v0.5** — lista de usuários na administração, com liga/desliga de acesso (cortesia ou bloqueio). Assinatura mensal recorrente com cartão (Stripe), preço configurável na tela de administração, login obrigatório, backup e sincronização entre aparelhos.
+**v0.7** — trilha ampliada: 4 partes (adição até 20, subtração até 20, contas maiores com vai um e empréstimo até centenas, tabuada do 2 ao 10), 39 etapas e 157 lições, com revisão das etapas anteriores e dicas para cada tipo de conta. **v0.6** — Termos de uso e Política de privacidade (LGPD e ECA Digital), autorização do responsável registrada no cadastro e aceite obrigatório para contas antigas. **v0.5** — lista de usuários na administração, com liga/desliga de acesso (cortesia ou bloqueio). Assinatura mensal recorrente com cartão (Stripe), preço configurável na tela de administração, login obrigatório, backup e sincronização entre aparelhos.
 
 ## Hospedagem
 
@@ -41,6 +41,7 @@ O app fica no Netlify (projeto `pingo-app`), publicado sozinho a cada push na `m
 - `supabase/cobranca.sql` — assinaturas, preço, administradores; o banco só aceita gravar progresso de quem tem assinatura em dia (ou é administrador).
 - `supabase/functions/assinatura` — página de pagamento (Stripe Checkout), portal do cliente (trocar cartão, recibos, cancelar), conferência da assinatura e exclusão de conta (cancela a cobrança antes de apagar).
 - `supabase/functions/stripe-webhook` — recebe os avisos da Stripe, confere a assinatura digital e grava o status. "Verify JWT" desligado.
+- `supabase/trilha.sql` — libera os limites de etapa e lição no banco para a trilha ampliada (v0.7).
 - `supabase/consentimento.sql` — registro de cada aceite dos termos (versão, data, navegador); só o próprio dono insere e lê, ninguém altera. Para pedir novo aceite de todos, mude `TERMOS_VERSAO` em `fonte/src/app.html` e a data nas páginas `termos.html` e `privacidade.html`.
 - `supabase/usuarios.sql` — colunas `cortesia` (acesso sem pagar) e `bloqueado` (acesso cortado pelo administrador) e a regra de acesso atualizada. Rode depois de `cobranca.sql`.
 - `supabase/functions/admin-cobranca` — conectar à Stripe (cria produto, preço, webhook e portal), definir preço e dias de teste, abrir vendas, ver os números e a lista de usuários, ligar e desligar o acesso de cada um.
