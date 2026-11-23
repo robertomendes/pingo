@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Pingo — prática diária de matemática para crianças</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F3F7FF}
+a{color:#2F4BC7}a:hover{color:#1E3399}
+.pg *{box-sizing:border-box}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:56px;align-items:center}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}
+.nav-links{display:flex;gap:28px;align-items:center}
+details summary{cursor:pointer;list-style:none}
+details summary::-webkit-details-marker{display:none}
+details[open] .mais{transform:rotate(45deg)}
+.cta:hover{filter:brightness(1.05)}
+.cta:focus-visible,.cta2:focus-visible,summary:focus-visible{outline:3px solid #1C2340;outline-offset:3px}
+@media (max-width:980px){.grid4{grid-template-columns:repeat(2,minmax(0,1fr))}.grid3{grid-template-columns:repeat(1,minmax(0,1fr))}.grid2{grid-template-columns:repeat(1,minmax(0,1fr));gap:40px}.nav-links{display:none}}
+@media (max-width:560px){.grid4{grid-template-columns:repeat(1,minmax(0,1fr))}.h1{font-size:40px !important}.h2{font-size:32px !important}.sec{padding:64px 20px !important}}
+</style>
+</helmet>
+<div class="pg" style="font-family: 'Nunito', system-ui, sans-serif; color: #1C2340; background: #F3F7FF; width: 100%; font-weight: 600">
+
+<!-- Topo -->
+<header style="position: sticky; top: 0; z-index: 10; background: rgba(243,247,255,0.94); backdrop-filter: blur(8px); border-bottom: 1px solid #DDE2EE">
+<div style="max-width: 1180px; margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px">
+<a href="#topo" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #2F4BC7; font-size: 28px; font-weight: 900">
+<svg width="30" height="33" viewBox="0 0 120 130" aria-hidden="true"><path d="M60 6C60 6 18 56 18 84a42 42 0 0 0 84 0C102 56 60 6 60 6z" fill="#2F4BC7"></path></svg>Pingo</a>
+<nav class="nav-links" aria-label="Seções" style="font-size: 16px; font-weight: 800">
+<a href="#como" style="color: #1C2340; text-decoration: none">Como funciona</a>
+<a href="#pais" style="color: #1C2340; text-decoration: none">Para os pais</a>
+<a href="#preco" style="color: #1C2340; text-decoration: none">Preço</a>
+<a href="#duvidas" style="color: #1C2340; text-decoration: none">Dúvidas</a>
+</nav>
+<div style="display: flex; gap: 8px; align-items: center">
+<a href="https://pingo.robertomendes.com.br/app/" style="color: #1C2340; font-weight: 800; font-size: 16px; padding: 10px 12px; min-height: 44px; display: inline-flex; align-items: center">Entrar</a>
+<a class="cta" href="https://pingo.robertomendes.com.br/app/" style="background: {{accent}}; color: #1C2340; text-decoration: none; font-weight: 900; font-size: 16px; padding: 12px 20px; border-radius: 14px; box-shadow: 0 4px 0 #B35E12; min-height: 44px; display: inline-flex; align-items: center">Testar grátis</a>
+</div>
+</div>
+</header>
+
+<!-- Hero -->
+<section id="topo" class="sec" style="padding: 72px 24px 88px">
+<div class="grid2" style="max-width: 1180px; margin: 0 auto">
+<div style="display: flex; flex-direction: column; gap: 24px">
+<p style="margin: 0; align-self: flex-start; background: #FFF1E3; color: #9A3412; font-size: 15px; font-weight: 900; padding: 8px 14px; border-radius: 999px; letter-spacing: 0.02em">PRÁTICA DIÁRIA DE MATEMÁTICA · 5 A 10 ANOS</p>
+<h1 class="h1" style="margin: 0; font-size: 58px; line-height: 1.05; font-weight: 900; letter-spacing: -0.02em">10 minutos por dia para seu filho ganhar confiança em matemática.</h1>
+<p style="margin: 0; font-size: 21px; line-height: 1.5; color: #4A5375">O Pingo é a prática que a escola não tem tempo de dar: a criança escreve a resposta com o dedo, recebe a correção na hora e só avança quando está segura. Você acompanha tudo, sem precisar sentar do lado.</p>
+<div style="display: flex; flex-wrap: wrap; gap: 14px; align-items: center">
+<a class="cta" href="https://pingo.robertomendes.com.br/app/" style="background: {{accent}}; color: #1C2340; text-decoration: none; font-weight: 900; font-size: 21px; padding: 18px 30px; border-radius: 18px; box-shadow: 0 6px 0 #B35E12; min-height: 56px; display: inline-flex; align-items: center">Começar 7 dias grátis</a>
+<a class="cta2" href="#como" style="color: #2F4BC7; font-weight: 900; font-size: 18px; padding: 12px 8px; min-height: 44px; display: inline-flex; align-items: center">Ver como funciona</a>
+</div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 10px 22px; font-size: 16px; font-weight: 800; color: #1F7A45">
+<li style="display: flex; gap: 8px; align-items: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1F7A45" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg>Sem cobrança no teste</li>
+<li style="display: flex; gap: 8px; align-items: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1F7A45" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg>Cancele em 2 toques</li>
+<li style="display: flex; gap: 8px; align-items: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1F7A45" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg>Sem anúncios</li>
+</ul>
+<p style="margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-size: 18px; font-weight: 800"><span style="background: #1C2340; color: #FFFFFF; font-size: 13px; font-weight: 900; padding: 5px 10px; border-radius: 8px; letter-spacing: 0.04em">LANÇAMENTO</span><span>Depois do teste, de <s style="color: #4A5375">{{precoNormal}}</s> por <b style="font-weight: 900; color: #9A3412">{{preco}}/mês</b>.</span></p>
+</div>
+
+<!-- Mockup do app -->
+<div style="position: relative">
+<div style="background: #2F4BC7; border-radius: 36px; padding: 28px; box-shadow: 0 30px 60px rgba(30,51,153,0.25)">
+<div style="background: #FFFFFF; border-radius: 26px; padding: 28px; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 900">
+<span>Tabuada do 7</span><span style="color: #4A5375">Continha 3 de 5</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px">
+<span style="height: 8px; border-radius: 4px; background: #1F7A45"></span><span style="height: 8px; border-radius: 4px; background: #1F7A45"></span><span style="height: 8px; border-radius: 4px; background: #F28C28"></span><span style="height: 8px; border-radius: 4px; background: #DDE2EE"></span><span style="height: 8px; border-radius: 4px; background: #DDE2EE"></span>
+</div>
+<div style="display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 72px; font-weight: 900; line-height: 1; padding: 8px 0">
+<span>7</span><span style="color: #F28C28">×</span><span>8</span><span style="color: #4A5375">=</span>
+<span style="border: 4px solid #1F7A45; border-radius: 20px; padding: 10px 18px; font-family: 'Comic Sans MS', 'Chalkboard SE', 'Nunito', cursive; font-weight: 700; color: #1C2340">56</span>
+</div>
+<div style="background: #EAF6EF; border-radius: 18px; padding: 16px 18px; display: flex; gap: 12px; align-items: center">
+<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#1F7A45" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M7 12l3.5 3.5L17 9"></path></svg>
+<div><p style="margin: 0; font-size: 18px; font-weight: 900; color: #1F7A45">Acertou!</p><p style="margin: 2px 0 0; font-size: 15px">7 × 8 = 56. Mandou bem!</p></div>
+</div>
+</div>
+</div>
+<div style="position: absolute; left: -22px; bottom: -34px; display: flex; align-items: flex-end; gap: 10px">
+<svg width="96" height="104" viewBox="0 0 120 130" aria-hidden="true"><path d="M60 6C60 6 18 56 18 84a42 42 0 0 0 84 0C102 56 60 6 60 6z" fill="#FFFFFF" stroke="#DDE2EE" stroke-width="2"></path><path d="M38 80q8-8 16 0M66 80q8-8 16 0" fill="none" stroke="#1C2340" stroke-width="4" stroke-linecap="round"></path><path d="M44 96q16 18 32 0z" fill="#1C2340"></path><circle cx="35" cy="95" r="6" fill="#FFB27A"></circle><circle cx="85" cy="95" r="6" fill="#FFB27A"></circle></svg>
+<p style="margin: 0 0 40px; background: #FFFFFF; border-radius: 16px; padding: 10px 14px; font-size: 15px; font-weight: 900; box-shadow: 0 8px 20px rgba(28,35,64,0.12)">3 dias seguidos!</p>
+</div>
+</div>
+</div>
+</section>
+
+<!-- Dor -->
+<section class="sec" style="background: #FFFFFF; padding: 96px 24px">
+<div style="max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px">
+<div style="max-width: 760px; display: flex; flex-direction: column; gap: 14px">
+<h2 class="h2" style="margin: 0; font-size: 42px; line-height: 1.12; font-weight: 900">Talvez você conheça essa cena.</h2>
+<p style="margin: 0; font-size: 20px; line-height: 1.55; color: #4A5375">Matemática é cumulativa: quem não fixou a adição sofre na subtração, e quem não fixou a tabuada trava na divisão. A lacuna não aparece num dia; ela vai crescendo em silêncio.</p>
+</div>
+<div class="grid3">
+<div style="background: #F3F7FF; border-radius: 24px; padding: 28px; display: flex; flex-direction: column; gap: 10px">
+<p style="margin: 0; font-size: 40px; font-weight: 900; color: #F28C28">1</p>
+<h3 style="margin: 0; font-size: 22px; font-weight: 900">O dever de casa vira briga</h3>
+<p style="margin: 0; font-size: 17px; line-height: 1.55; color: #4A5375">Contando nos dedos, apagando, chorando. Você explica de um jeito, a professora ensinou de outro, e no fim ninguém sai feliz da mesa.</p>
+</div>
+<div style="background: #F3F7FF; border-radius: 24px; padding: 28px; display: flex; flex-direction: column; gap: 10px">
+<p style="margin: 0; font-size: 40px; font-weight: 900; color: #F28C28">2</p>
+<h3 style="margin: 0; font-size: 22px; font-weight: 900">A escola não pode esperar</h3>
+<p style="margin: 0; font-size: 17px; line-height: 1.55; color: #4A5375">Com 25 alunos na sala, o conteúdo anda. Quem ainda não fixou a base vai acumulando dúvidas e começa a achar que “não é bom em matemática”.</p>
+</div>
+<div style="background: #F3F7FF; border-radius: 24px; padding: 28px; display: flex; flex-direction: column; gap: 10px">
+<p style="margin: 0; font-size: 40px; font-weight: 900; color: #F28C28">3</p>
+<h3 style="margin: 0; font-size: 22px; font-weight: 900">Os apps viram só joguinho</h3>
+<p style="margin: 0; font-size: 17px; line-height: 1.55; color: #4A5375">Muita animação, anúncio e moeda virtual, pouca conta de verdade. A criança passa uma hora na tela e você não sabe o que ela aprendeu.</p>
+</div>
+</div>
+</div>
+</section>
+
+<!-- Solução -->
+<section id="como" class="sec" style="padding: 96px 24px">
+<div style="max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px">
+<div style="max-width: 800px; display: flex; flex-direction: column; gap: 14px">
+<p style="margin: 0; font-size: 15px; font-weight: 900; color: #2F4BC7; letter-spacing: 0.06em">O MÉTODO PINGO</p>
+<h2 class="h2" style="margin: 0; font-size: 42px; line-height: 1.12; font-weight: 900">O que funciona é simples: pouco, todo dia, no nível certo.</h2>
+<p style="margin: 0; font-size: 20px; line-height: 1.55; color: #4A5375">É o mesmo princípio de aprender um instrumento ou uma língua. Treinos curtos e frequentes, começando do fácil e só subindo quando a base está firme. O Pingo transforma isso num hábito que a criança consegue manter sozinha.</p>
+</div>
+<div class="grid3">
+<div style="background: #FFFFFF; border-radius: 24px; padding: 30px; display: flex; flex-direction: column; gap: 14px">
+<span style="width: 56px; height: 56px; border-radius: 18px; background: #FFF1E3; display: flex; align-items: center; justify-content: center"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#9A3412" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2.5 2.5M9 2h6"></path></svg></span>
+<h3 style="margin: 0; font-size: 22px; font-weight: 900">Curto e diário</h3>
+<p style="margin: 0; font-size: 17px; line-height: 1.55; color: #4A5375">Cada lição tem 5 continhas e leva poucos minutos. Cabe antes da escola, depois do banho ou no carro. Os dias seguidos viram uma conquista que a criança quer manter.</p>
+</div>
+<div style="background: #FFFFFF; border-radius: 24px; padding: 30px; display: flex; flex-direction: column; gap: 14px">
+<span style="width: 56px; height: 56px; border-radius: 18px; background: #EAF6EF; display: flex; align-items: center; justify-content: center"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#1F7A45" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h4v-5h4v-5h4V5h6"></path></svg></span>
+<h3 style="margin: 0; font-size: 22px; font-weight: 900">No ritmo dela</h3>
+<p style="margin: 0; font-size: 17px; line-height: 1.55; color: #4A5375">Só destrava a próxima etapa quem acerta 4 de 5 de primeira. Errou? Ganha uma dica e tenta de novo. As lições finais de cada etapa misturam contas antigas para nada ser esquecido.</p>
+</div>
+<div style="background: #FFFFFF; border-radius: 24px; padding: 30px; display: flex; flex-direction: column; gap: 14px">
+<span style="width: 56px; height: 56px; border-radius: 18px; background: #E8ECFF; display: flex; align-items: center; justify-content: center"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#1E3399" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z"></path><path d="M14 6l3 3"></path></svg></span>
+<h3 style="margin: 0; font-size: 22px; font-weight: 900">Escrever, não chutar</h3>
+<p style="margin: 0; font-size: 17px; line-height: 1.55; color: #4A5375">Nada de múltipla escolha. A criança escreve o número com o dedo ou a caneta, como no caderno, e o Pingo lê a letra dela. Quem prefere, pode usar um teclado numérico.</p>
+</div>
+</div>
+
+<!-- Passo a passo -->
+<div style="background: #2F4BC7; color: #FFFFFF; border-radius: 32px; padding: 44px; display: flex; flex-direction: column; gap: 28px">
+<h3 style="margin: 0; font-size: 30px; font-weight: 900">Como é um dia com o Pingo</h3>
+<ol class="grid4" style="margin: 0; padding: 0; list-style: none">
+<li style="display: flex; flex-direction: column; gap: 10px"><span style="width: 44px; height: 44px; border-radius: 50%; background: #F28C28; color: #1C2340; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 20px">1</span><p style="margin: 0; font-size: 19px; font-weight: 900">A criança abre o Pingo</p><p style="margin: 0; font-size: 16px; line-height: 1.5; color: #D9E4FF">O mascote mostra a lição do dia. Um toque em Começar.</p></li>
+<li style="display: flex; flex-direction: column; gap: 10px"><span style="width: 44px; height: 44px; border-radius: 50%; background: #F28C28; color: #1C2340; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 20px">2</span><p style="margin: 0; font-size: 19px; font-weight: 900">Resolve 5 continhas</p><p style="margin: 0; font-size: 16px; line-height: 1.5; color: #D9E4FF">Escreve a resposta, confere e recebe a correção na hora, com dica se precisar. Dá até para ouvir a conta em voz alta.</p></li>
+<li style="display: flex; flex-direction: column; gap: 10px"><span style="width: 44px; height: 44px; border-radius: 50%; background: #F28C28; color: #1C2340; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 20px">3</span><p style="margin: 0; font-size: 19px; font-weight: 900">Ganha estrelas</p><p style="margin: 0; font-size: 16px; line-height: 1.5; color: #D9E4FF">Até 3 estrelas por lição e a sequência de dias seguidos. Pronto: missão cumprida.</p></li>
+<li style="display: flex; flex-direction: column; gap: 10px"><span style="width: 44px; height: 44px; border-radius: 50%; background: #F28C28; color: #1C2340; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 20px">4</span><p style="margin: 0; font-size: 19px; font-weight: 900">Você vê como foi</p><p style="margin: 0; font-size: 16px; line-height: 1.5; color: #D9E4FF">Na Área dos pais: acertos, tempo, contas difíceis e até o replay da escrita.</p></li>
+</ol>
+</div>
+</div>
+</section>
+
+<!-- Trilha -->
+<section class="sec" style="background: #FFFFFF; padding: 96px 24px">
+<div style="max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px">
+<div style="max-width: 800px; display: flex; flex-direction: column; gap: 14px">
+<p style="margin: 0; font-size: 15px; font-weight: 900; color: #2F4BC7; letter-spacing: 0.06em">A TRILHA</p>
+<h2 class="h2" style="margin: 0; font-size: 42px; line-height: 1.12; font-weight: 900">Da primeira continha à tabuada, um degrau de cada vez.</h2>
+<p style="margin: 0; font-size: 20px; line-height: 1.55; color: #4A5375">São 157 lições em 39 etapas. Meses de prática diária, numa ordem pensada para que cada passo apoie o próximo.</p>
+</div>
+<div class="grid4">
+<div style="background: #EAF6EF; border-radius: 24px; padding: 26px; display: flex; flex-direction: column; gap: 10px">
+<p style="margin: 0; font-size: 14px; font-weight: 900; color: #1F7A45">PARTE 1</p>
+<h3 style="margin: 0; font-size: 22px; font-weight: 900">Adição até 20</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #1C2340">Do “mais 1” ao “mais 9”, com a estratégia de completar o 10.</p>
+<p style="margin: 4px 0 0; font-size: 28px; font-weight: 900; color: #1F7A45">7 + 5</p>
+</div>
+<div style="background: #FFF1E3; border-radius: 24px; padding: 26px; display: flex; flex-direction: column; gap: 10px">
+<p style="margin: 0; font-size: 14px; font-weight: 900; color: #9A3412">PARTE 2</p>
+<h3 style="margin: 0; font-size: 22px; font-weight: 900">Subtração até 20</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #1C2340">Do “tirando 1” ao “tirando 9”, e uma revisão misturando mais e menos.</p>
+<p style="margin: 4px 0 0; font-size: 28px; font-weight: 900; color: #9A3412">13 − 6</p>
+</div>
+<div style="background: #E8ECFF; border-radius: 24px; padding: 26px; display: flex; flex-direction: column; gap: 10px">
+<p style="margin: 0; font-size: 14px; font-weight: 900; color: #1E3399">PARTE 3</p>
+<h3 style="margin: 0; font-size: 22px; font-weight: 900">Contas maiores</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #1C2340">Dezenas e centenas, com o famoso “vai um” e o “pede emprestado”.</p>
+<p style="margin: 4px 0 0; font-size: 28px; font-weight: 900; color: #1E3399">479 + 152</p>
+</div>
+<div style="background: #F6DDF0; border-radius: 24px; padding: 26px; display: flex; flex-direction: column; gap: 10px">
+<p style="margin: 0; font-size: 14px; font-weight: 900; color: #8A2470">PARTE 4</p>
+<h3 style="margin: 0; font-size: 22px; font-weight: 900">Tabuada</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #1C2340">Do 2 ao 10, primeiro em ordem, depois embaralhada, até a tabuada misturada.</p>
+<p style="margin: 4px 0 0; font-size: 28px; font-weight: 900; color: #8A2470">7 × 8</p>
+</div>
+</div>
+</div>
+</section>
+
+<!-- Pais -->
+<section id="pais" class="sec" style="padding: 96px 24px">
+<div class="grid2" style="max-width: 1180px; margin: 0 auto">
+<div style="display: flex; flex-direction: column; gap: 18px">
+<p style="margin: 0; font-size: 15px; font-weight: 900; color: #2F4BC7; letter-spacing: 0.06em">PARA OS PAIS</p>
+<h2 class="h2" style="margin: 0; font-size: 42px; line-height: 1.12; font-weight: 900">Você sabe exatamente onde seu filho está. E o que fazer para ajudar.</h2>
+<p style="margin: 0; font-size: 20px; line-height: 1.55; color: #4A5375">Sem relatório complicado: em dois minutos você entende a semana inteira.</p>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 14px; font-size: 18px; line-height: 1.5">
+<li style="display: flex; gap: 12px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1F7A45" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M5 12l5 5L20 7"></path></svg><span><b style="font-weight: 900">Dias praticados, tempo e acertos</b> da última semana, num resumo só.</span></li>
+<li style="display: flex; gap: 12px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1F7A45" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M5 12l5 5L20 7"></path></svg><span><b style="font-weight: 900">Ponto de atenção:</b> as contas que mais deram trabalho e uma sugestão prática de brincadeira para fazer em casa.</span></li>
+<li style="display: flex; gap: 12px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1F7A45" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M5 12l5 5L20 7"></path></svg><span><b style="font-weight: 900">Replay da escrita:</b> veja o traço da criança em cada resposta, como se estivesse olhando o caderno.</span></li>
+<li style="display: flex; gap: 12px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1F7A45" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M5 12l5 5L20 7"></path></svg><span><b style="font-weight: 900">Todos os filhos numa assinatura só,</b> cada um com seu perfil e sua trilha, em quantos aparelhos quiser.</span></li>
+</ul>
+</div>
+<div style="background: #FFFFFF; border-radius: 32px; padding: 30px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 24px 50px rgba(28,35,64,0.10)">
+<div style="background: #2F4BC7; color: #FFFFFF; border-radius: 22px; padding: 22px; display: flex; flex-direction: column; gap: 14px">
+<p style="margin: 0; font-size: 14px; font-weight: 800; color: #D9E4FF">Últimos 7 dias</p>
+<p style="margin: 0; font-size: 21px; font-weight: 900; line-height: 1.3">Nina praticou 6 de 7 dias e está em Somando 8.</p>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+<div style="background: rgba(255,255,255,0.14); border-radius: 14px; padding: 12px"><p style="margin: 0; font-size: 22px; font-weight: 900">38 min</p><p style="margin: 0; font-size: 13px; color: #D9E4FF">de prática</p></div>
+<div style="background: rgba(255,255,255,0.14); border-radius: 14px; padding: 12px"><p style="margin: 0; font-size: 22px; font-weight: 900">87%</p><p style="margin: 0; font-size: 13px; color: #D9E4FF">de primeira</p></div>
+<div style="background: rgba(255,255,255,0.14); border-radius: 14px; padding: 12px"><p style="margin: 0; font-size: 22px; font-weight: 900">30</p><p style="margin: 0; font-size: 13px; color: #D9E4FF">continhas</p></div>
+</div>
+</div>
+<div style="background: #FFF1E3; border-radius: 22px; padding: 20px; display: flex; flex-direction: column; gap: 6px">
+<p style="margin: 0; font-size: 17px; font-weight: 900; color: #9A3412">Ponto de atenção: Somando 7</p>
+<p style="margin: 0; font-size: 15px; line-height: 1.5">Contas que mais deram trabalho: 7 + 6, 7 + 8.</p>
+<p style="margin: 0; font-size: 15px; line-height: 1.5">Como ajudar: brinque de completar o 10 com tampinhas (7 + 6 vira 7 + 3 + 3).</p>
+</div>
+<p style="margin: 0; font-size: 13px; color: #4A5375; text-align: center">Exemplo ilustrativo da Área dos pais</p>
+</div>
+</div>
+</section>
+
+<!-- Objeções -->
+<section class="sec" style="background: #FFFFFF; padding: 96px 24px">
+<div style="max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px">
+<div style="max-width: 800px; display: flex; flex-direction: column; gap: 14px">
+<h2 class="h2" style="margin: 0; font-size: 42px; line-height: 1.12; font-weight: 900">“Parece bom, mas…”</h2>
+<p style="margin: 0; font-size: 20px; line-height: 1.55; color: #4A5375">As dúvidas que todo pai e mãe têm antes de começar. Respondidas sem enrolação.</p>
+</div>
+<div class="grid3">
+<div style="border: 2px solid #DDE2EE; border-radius: 24px; padding: 28px; display: flex; flex-direction: column; gap: 10px">
+<h3 style="margin: 0; font-size: 20px; font-weight: 900">“Meu filho odeia matemática.”</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.55; color: #4A5375">Muitas vezes ele odeia é se sentir perdido. O Pingo começa no fácil, a criança acerta logo nas primeiras contas e a dificuldade sobe só quando ela está pronta. Confiança vem de acertar.</p>
+</div>
+<div style="border: 2px solid #DDE2EE; border-radius: 24px; padding: 28px; display: flex; flex-direction: column; gap: 10px">
+<h3 style="margin: 0; font-size: 20px; font-weight: 900">“Não tenho tempo de acompanhar.”</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.55; color: #4A5375">Você não precisa. O Pingo corrige, dá a dica e decide a próxima lição sozinho. Seu papel é olhar o resumo quando puder e comemorar os dias seguidos.</p>
+</div>
+<div style="border: 2px solid #DDE2EE; border-radius: 24px; padding: 28px; display: flex; flex-direction: column; gap: 10px">
+<h3 style="margin: 0; font-size: 20px; font-weight: 900">“Já tem tela demais.”</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.55; color: #4A5375">Concordamos. Por isso o Pingo tem começo, meio e fim: 5 continhas e acabou. Sem vídeo, sem rolagem infinita, sem anúncio puxando para outro app. Poucos minutos de tela com propósito.</p>
+</div>
+<div style="border: 2px solid #DDE2EE; border-radius: 24px; padding: 28px; display: flex; flex-direction: column; gap: 10px">
+<h3 style="margin: 0; font-size: 20px; font-weight: 900">“Funciona no nosso aparelho?”</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.55; color: #4A5375">Funciona no navegador do iPad, de tablets Android e do computador, sem baixar nada da loja. Dá para colocar o ícone na tela inicial e, depois de aberto, ele segue funcionando mesmo sem internet.</p>
+</div>
+<div style="border: 2px solid #DDE2EE; border-radius: 24px; padding: 28px; display: flex; flex-direction: column; gap: 10px">
+<h3 style="margin: 0; font-size: 20px; font-weight: 900">“Meu filho já sabe somar.”</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.55; color: #4A5375">Ótimo, ele vai passar rápido pelo começo e ganhar velocidade, que também importa. Em poucos dias chega à subtração, às contas maiores e à tabuada, onde o desafio de verdade começa.</p>
+</div>
+<div style="border: 2px solid #DDE2EE; border-radius: 24px; padding: 28px; display: flex; flex-direction: column; gap: 10px">
+<h3 style="margin: 0; font-size: 20px; font-weight: 900">“É seguro para criança?”</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.55; color: #4A5375">A conta é sempre do adulto. Guardamos só o apelido e as lições, sem anúncios, sem chat e sem contato com estranhos, seguindo a LGPD e o ECA Digital. Você apaga tudo quando quiser.</p>
+</div>
+</div>
+</div>
+</section>
+
+<!-- Preço -->
+<section id="preco" class="sec" style="padding: 96px 24px">
+<div class="grid2" style="max-width: 1180px; margin: 0 auto">
+<div style="display: flex; flex-direction: column; gap: 18px">
+<p style="margin: 0; font-size: 15px; font-weight: 900; color: #2F4BC7; letter-spacing: 0.06em">PREÇO</p>
+<h2 class="h2" style="margin: 0; font-size: 42px; line-height: 1.12; font-weight: 900">R$ 1,30 por dia para a matemática virar rotina.</h2>
+<p style="margin: 0; font-size: 20px; line-height: 1.55; color: #4A5375">O valor normal do Pingo é {{precoNormal}} por mês. Para as primeiras famílias, a mensalidade sai por {{preco}}: um preço promocional de lançamento, por tempo limitado.</p>
+<p style="margin: 0; font-size: 20px; line-height: 1.55; color: #4A5375">Uma assinatura vale para todos os filhos da casa. Comece com 7 dias grátis e só pague se fizer sentido para a sua família.</p>
+</div>
+<div style="background: #FFFFFF; border: 4px solid #2F4BC7; border-radius: 32px; padding: 36px; display: flex; flex-direction: column; gap: 20px; box-shadow: 0 24px 50px rgba(30,51,153,0.15)">
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<p style="margin: 0; background: #1C2340; color: #FFFFFF; font-size: 14px; font-weight: 900; padding: 6px 12px; border-radius: 999px">PREÇO DE LANÇAMENTO</p>
+<p style="margin: 0; background: #EAF6EF; color: #1F7A45; font-size: 14px; font-weight: 900; padding: 6px 12px; border-radius: 999px">7 DIAS GRÁTIS</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<p style="margin: 0; font-size: 20px; font-weight: 800; color: #4A5375">De <s>{{precoNormal}}</s> por</p>
+<p style="margin: 0; display: flex; align-items: baseline; gap: 8px"><span style="font-size: 72px; font-weight: 900; line-height: 1; color: #1C2340">{{preco}}</span><span style="font-size: 20px; font-weight: 800; color: #4A5375">por mês</span></p>
+<p style="margin: 0; font-size: 16px; font-weight: 800; color: #9A3412">Economia de R$ 20 por mês enquanto durar a promoção</p>
+</div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; font-size: 17px">
+<li style="display: flex; gap: 10px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1F7A45" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="M5 12l5 5L20 7"></path></svg>Trilha completa: 157 lições, da adição à tabuada</li>
+<li style="display: flex; gap: 10px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1F7A45" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="M5 12l5 5L20 7"></path></svg>Todos os filhos da casa, em vários aparelhos</li>
+<li style="display: flex; gap: 10px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1F7A45" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="M5 12l5 5L20 7"></path></svg>Área dos pais com resumo, pontos de atenção e replay</li>
+<li style="display: flex; gap: 10px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1F7A45" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="M5 12l5 5L20 7"></path></svg>Progresso salvo na nuvem, sem anúncios</li>
+</ul>
+<a class="cta" href="https://pingo.robertomendes.com.br/app/" style="background: {{accent}}; color: #1C2340; text-decoration: none; font-weight: 900; font-size: 20px; padding: 18px 24px; border-radius: 18px; box-shadow: 0 6px 0 #B35E12; min-height: 56px; display: flex; align-items: center; justify-content: center; text-align: center">Começar 7 dias grátis</a>
+<p style="margin: 0; font-size: 14px; line-height: 1.5; color: #4A5375; text-align: center">Cartão de crédito, cobrança mensal. Cancele quando quiser pelo próprio app.</p>
+</div>
+</div>
+</section>
+
+<!-- Garantia -->
+<section class="sec" style="padding: 0 24px 96px">
+<div style="max-width: 1180px; margin: 0 auto; background: #1C2340; color: #FFFFFF; border-radius: 32px; padding: 44px; display: flex; flex-wrap: wrap; gap: 28px; align-items: center">
+<span style="width: 88px; height: 88px; border-radius: 28px; background: #F28C28; display: flex; align-items: center; justify-content: center; flex: none"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#1C2340" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"></path><path d="M8.5 12l2.5 2.5 4.5-5"></path></svg></span>
+<div style="flex: 1 1 520px; display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-size: 30px; font-weight: 900">Risco zero, de verdade.</h2>
+<p style="margin: 0; font-size: 18px; line-height: 1.55; color: #D9E4FF">São 7 dias grátis para testar com calma. Se cancelar antes do fim, não paga nada. E se mudar de ideia nos 7 dias depois da primeira cobrança, devolvemos o valor inteiro. Sem fidelidade e sem multa.</p>
+</div>
+</div>
+</section>
+
+<!-- FAQ -->
+<section id="duvidas" class="sec" style="background: #FFFFFF; padding: 96px 24px">
+<div style="max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px">
+<h2 class="h2" style="margin: 0; font-size: 42px; line-height: 1.12; font-weight: 900">Perguntas frequentes</h2>
+<div style="display: flex; flex-direction: column; gap: 12px">
+<details style="background: #F3F7FF; border-radius: 20px; padding: 22px 24px"><summary style="display: flex; justify-content: space-between; gap: 16px; font-size: 19px; font-weight: 900; min-height: 28px">Para qual idade o Pingo é indicado?<span class="mais" aria-hidden="true" style="color: #2F4BC7; font-size: 26px; line-height: 1">+</span></summary><p style="margin: 14px 0 0; font-size: 17px; line-height: 1.6; color: #4A5375">Em geral, de 5 a 10 anos. A trilha começa na adição até 20, comum no início da alfabetização, e vai até a tabuada, trabalhada nos anos seguintes. Cada criança avança no próprio ritmo.</p></details>
+<details style="background: #F3F7FF; border-radius: 20px; padding: 22px 24px"><summary style="display: flex; justify-content: space-between; gap: 16px; font-size: 19px; font-weight: 900; min-height: 28px">Quanto tempo por dia?<span class="mais" aria-hidden="true" style="color: #2F4BC7; font-size: 26px; line-height: 1">+</span></summary><p style="margin: 14px 0 0; font-size: 17px; line-height: 1.6; color: #4A5375">Uma lição de 5 continhas, que costuma levar poucos minutos. A constância vale mais do que o tempo: melhor um pouco todo dia do que uma hora no fim de semana.</p></details>
+<details style="background: #F3F7FF; border-radius: 20px; padding: 22px 24px"><summary style="display: flex; justify-content: space-between; gap: 16px; font-size: 19px; font-weight: 900; min-height: 28px">Precisa de caneta especial?<span class="mais" aria-hidden="true" style="color: #2F4BC7; font-size: 26px; line-height: 1">+</span></summary><p style="margin: 14px 0 0; font-size: 17px; line-height: 1.6; color: #4A5375">Não. Dá para escrever com o dedo. Se tiver uma caneta para tablet, fica ainda mais parecido com o caderno. E quem preferir pode responder pelo teclado numérico.</p></details>
+<details style="background: #F3F7FF; border-radius: 20px; padding: 22px 24px"><summary style="display: flex; justify-content: space-between; gap: 16px; font-size: 19px; font-weight: 900; min-height: 28px">Quanto custa depois do teste?<span class="mais" aria-hidden="true" style="color: #2F4BC7; font-size: 26px; line-height: 1">+</span></summary><p style="margin: 14px 0 0; font-size: 17px; line-height: 1.6; color: #4A5375">O valor normal é {{precoNormal}} por mês. No lançamento, a mensalidade sai por {{preco}}, cobrada no cartão de crédito a cada mês depois dos 7 dias grátis. Se algum dia o preço mudar, você é avisado por e-mail com 30 dias de antecedência e pode cancelar antes.</p></details>
+<details style="background: #F3F7FF; border-radius: 20px; padding: 22px 24px"><summary style="display: flex; justify-content: space-between; gap: 16px; font-size: 19px; font-weight: 900; min-height: 28px">Tenho mais de um filho. Pago duas vezes?<span class="mais" aria-hidden="true" style="color: #2F4BC7; font-size: 26px; line-height: 1">+</span></summary><p style="margin: 14px 0 0; font-size: 17px; line-height: 1.6; color: #4A5375">Não. Uma assinatura vale para todos os filhos da casa, cada um com seu perfil, sua trilha e seu progresso.</p></details>
+<details style="background: #F3F7FF; border-radius: 20px; padding: 22px 24px"><summary style="display: flex; justify-content: space-between; gap: 16px; font-size: 19px; font-weight: 900; min-height: 28px">O Pingo substitui a escola ou o reforço?<span class="mais" aria-hidden="true" style="color: #2F4BC7; font-size: 26px; line-height: 1">+</span></summary><p style="margin: 14px 0 0; font-size: 17px; line-height: 1.6; color: #4A5375">Não, e nem quer. O professor ensina o conceito; o Pingo garante a prática diária que fixa o que foi ensinado. É o treino que faz a matéria da escola ficar fácil.</p></details>
+<details style="background: #F3F7FF; border-radius: 20px; padding: 22px 24px"><summary style="display: flex; justify-content: space-between; gap: 16px; font-size: 19px; font-weight: 900; min-height: 28px">Como cancelo?<span class="mais" aria-hidden="true" style="color: #2F4BC7; font-size: 26px; line-height: 1">+</span></summary><p style="margin: 14px 0 0; font-size: 17px; line-height: 1.6; color: #4A5375">Na Área dos pais, em Assinatura, sem precisar falar com ninguém. O acesso continua até o fim do período já pago, e o progresso das crianças fica guardado se quiser voltar.</p></details>
+<details style="background: #F3F7FF; border-radius: 20px; padding: 22px 24px"><summary style="display: flex; justify-content: space-between; gap: 16px; font-size: 19px; font-weight: 900; min-height: 28px">E os dados do meu filho?<span class="mais" aria-hidden="true" style="color: #2F4BC7; font-size: 26px; line-height: 1">+</span></summary><p style="margin: 14px 0 0; font-size: 17px; line-height: 1.6; color: #4A5375">Guardamos só o nome ou apelido e as lições feitas, em servidores no Brasil. Nada de anúncios ou venda de dados. A leitura da escrita acontece no próprio aparelho. Detalhes na <a href="https://pingo.robertomendes.com.br/privacidade.html">Política de privacidade</a>.</p></details>
+</div>
+</div>
+</section>
+
+<!-- CTA final -->
+<section class="sec" style="padding: 96px 24px">
+<div style="max-width: 1180px; margin: 0 auto; background: #2F4BC7; color: #FFFFFF; border-radius: 40px; padding: 64px 40px; display: flex; flex-direction: column; align-items: center; gap: 22px; text-align: center">
+<svg width="110" height="119" viewBox="0 0 120 130" aria-hidden="true"><path d="M60 6C60 6 18 56 18 84a42 42 0 0 0 84 0C102 56 60 6 60 6z" fill="#FFFFFF"></path><circle cx="46" cy="82" r="9" fill="#1C2340"></circle><circle cx="74" cy="82" r="9" fill="#1C2340"></circle><circle cx="49" cy="79" r="3" fill="#FFFFFF"></circle><circle cx="77" cy="79" r="3" fill="#FFFFFF"></circle><path d="M48 100q12 10 24 0" fill="none" stroke="#1C2340" stroke-width="4" stroke-linecap="round"></path><circle cx="35" cy="95" r="6" fill="#FFB27A"></circle><circle cx="85" cy="95" r="6" fill="#FFB27A"></circle></svg>
+<h2 class="h2" style="margin: 0; font-size: 46px; line-height: 1.1; font-weight: 900; max-width: 760px">A base que seu filho constrói hoje é a matemática que ele vai ter amanhã.</h2>
+<p style="margin: 0; font-size: 20px; line-height: 1.55; color: #D9E4FF; max-width: 640px">Comece hoje. Em 7 dias você já vai saber se o Pingo é para a sua família.</p>
+<a class="cta" href="https://pingo.robertomendes.com.br/app/" style="background: {{accent}}; color: #1C2340; text-decoration: none; font-weight: 900; font-size: 21px; padding: 18px 34px; border-radius: 18px; box-shadow: 0 6px 0 #B35E12; min-height: 56px; display: inline-flex; align-items: center">Começar 7 dias grátis</a>
+<p style="margin: 0; font-size: 15px; color: #D9E4FF">Preço de lançamento: {{preco}}/mês (normal {{precoNormal}}) · Sem cobrança no teste · Cancele quando quiser</p>
+</div>
+</section>
+
+<footer style="padding: 32px 24px 48px">
+<div style="max-width: 1180px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 16px 28px; justify-content: space-between; align-items: center; font-size: 15px; color: #4A5375">
+<p style="margin: 0; font-weight: 800">Pingo · prática diária de matemática</p>
+<nav aria-label="Rodapé" style="display: flex; flex-wrap: wrap; gap: 20px">
+<a href="https://pingo.robertomendes.com.br/termos.html" style="color: #4A5375; font-weight: 800">Termos de uso</a>
+<a href="https://pingo.robertomendes.com.br/privacidade.html" style="color: #4A5375; font-weight: 800">Privacidade</a>
+<a href="mailto:robertof.mendes@gmail.com" style="color: #4A5375; font-weight: 800">Contato</a>
+</nav>
+</div>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F28C28","options":["#F28C28","#FFB627","#3DBE7A"]},"preco":{"editor":"text","default":"R$ 39"},"precoNormal":{"editor":"text","default":"R$ 59"},"$preview":{"width":1440,"height":9500}}'>
+class Component extends DCLogic {
+renderVals() {
+return { accent: this.props.accent ?? '#F28C28', preco: this.props.preco ?? 'R$ 39', precoNormal: this.props.precoNormal ?? 'R$ 59' };
+}
+}
+</script>
+</body>
+</html>

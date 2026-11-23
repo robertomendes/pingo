@@ -6,14 +6,14 @@ async def main():
         br=await p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--no-sandbox'])
         # 1) supabase-js real, sem configuração
         ctx=await br.new_context(service_workers='block'); pg=await ctx.new_page(); errs=[]; pg.on('pageerror',lambda e:errs.append(str(e)))
-        await pg.goto('http://localhost:8766/'); await pg.wait_for_timeout(800)
+        await pg.goto('http://localhost:8766/app/'); await pg.wait_for_timeout(800)
         print('supabase carregado:', await pg.evaluate('typeof window.supabase.createClient'), '| erros:', errs)
         # 2) com configuração falsa (sem rede até o Supabase): app abre normal, conta disponível
         ctx2=await br.new_context(service_workers='block'); 
         await ctx2.route('**/config.js', lambda r: r.fulfill(content_type='application/javascript', body="window.PINGO_CONFIG={supabaseUrl:'https://exemplo.supabase.co',supabaseAnonKey:'sb_publishable_teste',contato:'contato@exemplo.com'};"))
         await ctx2.route('https://exemplo.supabase.co/**', lambda r: r.abort())
         pg2=await ctx2.new_page(); errs2=[]; pg2.on('pageerror',lambda e:errs2.append(str(e)))
-        await pg2.goto('http://localhost:8766/'); await pg2.wait_for_timeout(1000)
+        await pg2.goto('http://localhost:8766/app/'); await pg2.wait_for_timeout(1000)
         print('botão entrar na boas-vindas:', await pg2.locator('[data-act=abrirConta]').count(), '| erros:', errs2)
         await pg2.click('[data-act=abrirConta]'); await pg2.fill('input[name=email]','a@b.com'); await pg2.fill('input[name=senha]','12345678'); await pg2.click('button[type=submit]'); await pg2.wait_for_timeout(1500)
         print('login sem rede ->', await pg2.locator('[role=alert]').inner_text())
@@ -24,7 +24,7 @@ async def main():
         # 3) migração v0.1
         ctx3=await br.new_context(service_workers='block'); await ctx3.add_init_script('localStorage.setItem("pingo.v1", %s)' % json.dumps(json.dumps(V01)))
         pg3=await ctx3.new_page(); errs3=[]; pg3.on('pageerror',lambda e:errs3.append(str(e)))
-        await pg3.goto('http://localhost:8766/'); await pg3.wait_for_timeout(500)
+        await pg3.goto('http://localhost:8766/app/'); await pg3.wait_for_timeout(500)
         t=await pg3.locator('main').inner_text()
         print('migração v0.1:', '30 estrelas' in t, 'Somando 3' in t, '| erros:', errs3)
         await br.close()

@@ -21,6 +21,24 @@
   for = "/index.html"
   [headers.values]
     Cache-Control = "no-cache"
+[[headers]]
+  for = "/app/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+[[headers]]
+  for = "/app/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+[[headers]]
+  for = "/app/*"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+# o app mora em /app/ (o endereço sem a barra final também funciona)
+[[redirects]]
+  from = "/app"
+  to = "/app/"
+  status = 301
 
 # código-fonte e scripts do banco não precisam ser servidos
 [[redirects]]

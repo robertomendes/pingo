@@ -1,15 +1,12 @@
-const CACHE = 'pingo-v0.7.0';
-const ARQUIVOS = ['./', './index.html', './config.js', './vendor/supabase.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './termos.html', './privacidade.html', './legal.css'];
-self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARQUIVOS)).then(() => self.skipWaiting())); });
-self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
-self.addEventListener('fetch', e => {
-  const req = e.request; if (req.method !== 'GET') return;
-  const url = new URL(req.url);
-  if (url.origin === location.origin) {
-    // app: rede primeiro (pega atualizações), cai no cache sem internet
-    e.respondWith(fetch(req).then(r => { const cp = r.clone(); caches.open(CACHE).then(c => c.put(req, cp)); return r; }).catch(() => caches.match(req).then(r => r || caches.match('./index.html'))));
-  } else if (url.hostname.endsWith('googleapis.com') || url.hostname.endsWith('gstatic.com')) {
-    // fontes: cache primeiro
-    e.respondWith(caches.match(req).then(r => r || fetch(req).then(res => { const cp = res.clone(); caches.open(CACHE).then(c => c.put(req, cp)); return res; })));
-  }
+// O app do Pingo mudou para /app/. Este service worker antigo (da raiz) se desliga sozinho:
+// apaga o cache antigo, sai de cena e recarrega as abas para mostrarem a versão nova.
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', e => {
+  e.waitUntil((async () => {
+    const ks = await caches.keys();
+    await Promise.all(ks.filter(k => !k.startsWith('pingo-app-')).map(k => caches.delete(k)));
+    await self.registration.unregister();
+    const cs = await self.clients.matchAll({ type: 'window' });
+    cs.forEach(c => { try { c.navigate(c.url); } catch (err) { } });
+  })());
 });

@@ -1,6 +1,6 @@
 import asyncio, json, re, itertools, datetime
 from playwright.async_api import async_playwright
-BASE='http://localhost:8766/'
+BASE='http://localhost:8766/app/'
 class Server:
     def __init__(s): s.users={}; s.toks={}; s.cri={}; s.lic=[]; s.offline=set(); s.clock=itertools.count(1); s.PAG=3; s.calls=[]; s.assin={}; s.admins=set(); s.config={'preco_centavos':4990,'dias_teste':7,'vendas_abertas':True,'modo':'teste'}; s.checkouts=0; s.termos={}; s.consents=[]
     def tem(s,uid):
@@ -135,7 +135,7 @@ async def main():
         await A.click('[data-act=contaModo][data-m=criar]')
         await A.fill('input[name=email]','pai@x.com'); await A.fill('input[name=senha]','12345678'); await A.click('button[type=submit]'); await idle(A,400)
         check('autorização' in await A.locator('[role=alert]').inner_text(),'criar conta exige marcar a autorização do responsável')
-        check(await A.locator('form[data-form=conta] a[href="termos.html"]').count()==1 and await A.locator('form[data-form=conta] a[href="privacidade.html"]').count()==1,'cadastro tem links para termos e privacidade')
+        check(await A.locator('form[data-form=conta] a[href="../termos.html"]').count()==1 and await A.locator('form[data-form=conta] a[href="../privacidade.html"]').count()==1,'cadastro tem links para termos e privacidade')
         await A.check('input[name=ok]'); await A.click('button[type=submit]'); await idle(A)
         uidA=S.users['pai@x.com']['id']
         check(S.consents and S.consents[-1][0]==uidA and S.consents[-1][2]=='cadastro','aceite do cadastro fica registrado no servidor')

@@ -13,8 +13,8 @@ if (location.hostname === 'robertomendes.github.io') location.replace('https://p
 <meta name="apple-mobile-web-app-title" content="Pingo">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<link rel="icon" type="image/png" href="../icon-192.png">
 <title>Pingo — prática diária de matemática</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
@@ -156,8 +156,8 @@ h2{margin:0;font-size:28px;font-weight:900}
 .btn-perigo{background:#C2410C;color:#fff}
 :focus-visible{outline:3px solid var(--azul);outline-offset:2px}
 </style>
-<script src="config.js"></script>
-<script src="vendor/supabase.js"></script>
+<script src="../config.js"></script>
+<script src="../vendor/supabase.js"></script>
 </head>
 <body>
 <div id="app" aria-live="polite"></div>
@@ -835,7 +835,7 @@ function modalSair() {
     '<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-perigo btn-pequeno" data-act="sairConta">Sair</button><button class="btn btn-claro btn-pequeno" data-act="fecharModal" data-foco>Cancelar</button></div></div></div>';
 }
 
-const LINK_TERMOS = '<a href="termos.html" target="_blank" rel="noopener">Termos de uso</a>', LINK_PRIV = '<a href="privacidade.html" target="_blank" rel="noopener">Política de privacidade</a>';
+const LINK_TERMOS = '<a href="../termos.html" target="_blank" rel="noopener">Termos de uso</a>', LINK_PRIV = '<a href="../privacidade.html" target="_blank" rel="noopener">Política de privacidade</a>';
 function caixaAceite(marcado) {
   return '<label class="aceite"><input type="checkbox" name="ok"' + (marcado ? ' checked' : '') + '><span>Sou maior de 18 anos e pai, mãe ou responsável legal pela(s) criança(s). Li e aceito os ' + LINK_TERMOS + ' e a ' + LINK_PRIV + ', e <b>autorizo o Pingo a tratar os dados da(s) criança(s)</b> (nome ou apelido e as lições feitas) para ela(s) praticar(em) e eu acompanhar o progresso.</span></label>';
 }
@@ -1239,8 +1239,8 @@ const ACOES = {
   abrirConta: d => { contaModo = d.m || 'entrar'; contaMsg = null; contaSenha = ''; contaOk = false; contaVolta = tela === 'pais' ? 'pais' : 'inicio'; ir('conta'); },
   contaModo: d => { guardarForm(); contaModo = d.m; contaMsg = null; render(); },
   contaVoltar: () => { contaMsg = null; contaSenha = ''; if (contaVolta === 'pais' && db.criancas.length && logado()) ir('pais'); else ir(telaInicial()); },
-  privacidade: () => { guardarForm(); try { window.open('privacidade.html', '_blank', 'noopener'); } catch (e) { location.href = 'privacidade.html'; } },
-  termos: () => { guardarForm(); try { window.open('termos.html', '_blank', 'noopener'); } catch (e) { location.href = 'termos.html'; } },
+  privacidade: () => { guardarForm(); try { window.open('../privacidade.html', '_blank', 'noopener'); } catch (e) { location.href = '../privacidade.html'; } },
+  termos: () => { guardarForm(); try { window.open('../termos.html', '_blank', 'noopener'); } catch (e) { location.href = '../termos.html'; } },
   sincAgora: () => { sincronizar(); atualizarSelo(); },
   assinar: async () => {
     pagamento = { estado: 'indo', msg: null }; render();
