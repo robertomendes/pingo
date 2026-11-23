@@ -33,18 +33,23 @@ Xtr=[recenter(i) for i in X[:nt]]; ytr=list(y[:nt])
 for k in range(4):
     Xtr+= [aug(i) for i in X[:nt]]; ytr+=list(y[:nt])
 Xtr=np.array(Xtr).reshape(len(Xtr),-1); ytr=np.array(ytr)
+# algarismos no estilo brasileiro (1 com tracinho e base, 7 cortado, 4 fechado), rasterizados pelo próprio app
+S=np.load('sint_treino.npz'); Xs,ys=S['X'],S['y']
+Xtr=np.concatenate([Xtr]+[Xs]*3); ytr=np.concatenate([ytr]+[ys]*3)
+print('treino', Xtr.shape)
 Xte=np.array([recenter(i) for i in X[nt:]]).reshape(-1,784); yte=y[nt:]
 Xte_aug=np.array([aug(i) for i in X[nt:]]).reshape(-1,784)
-clf=MLPClassifier(hidden_layer_sizes=(160,),alpha=1e-4,batch_size=256,max_iter=40,early_stopping=False,random_state=0,verbose=False)
+clf=MLPClassifier(hidden_layer_sizes=(160,),alpha=1e-4,batch_size=256,max_iter=30,early_stopping=False,random_state=0,verbose=False)
 clf.fit(Xtr,ytr)
 print('test',clf.score(Xte,yte),'test_aug',clf.score(Xte_aug,yte))
+T=np.load('sint_teste.npz'); print('sinteticos BR', clf.score(T['X'],T['y']))
 W1,W2=clf.coefs_; b1,b2=clf.intercepts_
 def q(a):
     s=np.abs(a).max()/127; return np.round(a/s).astype(np.int8),float(s)
 import base64
 q1,s1=q(W1); q2,s2=q(W2)
 model={'w1':base64.b64encode(q1.tobytes()).decode(),'s1':s1,'b1':b1.round(5).tolist(),'w2':base64.b64encode(q2.tobytes()).decode(),'s2':s2,'b2':b2.round(5).tolist(),'h':160}
-json.dump(model,open('model.json','w'))
+json.dump(model,open('model_v2.json','w'))
 # quantized accuracy
 h=np.maximum(0,Xte@(q1*s1)+b1); p=(h@(q2*s2)+b2).argmax(1); print('quant',(p==yte).mean())
-np.save('sample.npy',Xte[:20]); np.save('sample_y.npy',yte[:20])
+hs=np.maximum(0,T['X']@(q1*s1)+b1); ps=(hs@(q2*s2)+b2).argmax(1); print('quant BR',(ps==T['y']).mean(), [round(float((ps[T['y']==k]==k).mean()),3) for k in range(10)])

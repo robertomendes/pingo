@@ -1,4 +1,4 @@
-const CACHE = 'pingo-app-v0.8.0';
+const CACHE = 'pingo-app-v0.8.1';
 const ARQUIVOS = ['./', './index.html', './manifest.webmanifest', '../config.js', '../vendor/supabase.js', '../icon-192.png', '../icon-512.png', '../apple-touch-icon.png', '../termos.html', '../privacidade.html', '../legal.css'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARQUIVOS)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE && k.startsWith('pingo-app-')).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
