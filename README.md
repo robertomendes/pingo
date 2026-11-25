@@ -44,6 +44,8 @@ O site fica no Netlify (projeto `pingo-app`), publicado sozinho a cada push na `
 - `supabase/trilha.sql` — libera os limites de etapa e lição no banco para a trilha ampliada (v0.7).
 - `supabase/consentimento.sql` — registro de cada aceite dos termos (versão, data, navegador); só o próprio dono insere e lê, ninguém altera. Para pedir novo aceite de todos, mude `TERMOS_VERSAO` em `fonte/src/app.html` e a data nas páginas `termos.html` e `privacidade.html`.
 - `supabase/usuarios.sql` — colunas `cortesia` (acesso sem pagar) e `bloqueado` (acesso cortado pelo administrador) e a regra de acesso atualizada. Rode depois de `cobranca.sql`.
+- `supabase/planos.sql` — plano anual (`preco_anual_centavos`, `stripe_price_anual_id`) e oferta de fundador (`fundador_ate`): quem assina até essa data fica marcado como fundador (`assinaturas.fundador`) e é pulado nos reajustes "para quem já assina". Também guarda o `intervalo` (mês/ano) de cada assinatura, usado no cálculo da receita mensal. Rode depois de `usuarios.sql`.
+- No checkout o app pede o CPF de quem paga; a função `assinatura` confere os dígitos e grava o CPF só no cliente da Stripe (`br_cpf`), para os recibos e o carnê-leão.
 - `supabase/functions/admin-cobranca` — conectar à Stripe (cria produto, preço, webhook e portal), definir preço e dias de teste, abrir vendas, ver os números e a lista de usuários, ligar e desligar o acesso de cada um.
 
 Ligar: em Edge Functions › Secrets, crie `STRIPE_SECRET_KEY` (comece com a chave de teste `sk_test_…`). Depois, no app, Área dos pais › Administração do Pingo › Conectar à Stripe. Para cobrar de verdade, troque pela chave `sk_live_…` e toque em Reconectar.

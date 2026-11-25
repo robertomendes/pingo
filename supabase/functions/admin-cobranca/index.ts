@@ -69,22 +69,41 @@ async function usuarios(deps: Deps) {
 }
 
 async function resumo(deps: Deps) {
-  const [cfg] = await deps.sql`select preco_centavos, dias_teste, moeda, vendas_abertas, modo, stripe_price_id, atualizado_em from public.config_cobranca where id = 1`;
+  const [cfg] = await deps.sql`select preco_centavos, preco_anual_centavos, fundador_ate::text as fundador_ate, dias_teste, moeda, vendas_abertas, modo, stripe_price_id, stripe_price_anual_id, atualizado_em from public.config_cobranca where id = 1`;
   const [seg] = await deps.sql`select webhook_endpoint_id from public.cobranca_segredos where id = 1`;
-  const linhas = await deps.sql`select status, count(*)::int as n, coalesce(sum(preco_centavos), 0)::int as soma from public.assinaturas group by status`;
-  const n = (s: string) => linhas.find((l: any) => l.status === s)?.n ?? 0;
-  const mrr = linhas.filter((l: any) => l.status === 'active' || l.status === 'past_due').reduce((t: number, l: any) => t + l.soma, 0);
+  const linhas = await deps.sql`select status, coalesce(intervalo, 'month') as intervalo, count(*)::int as n, coalesce(sum(preco_centavos), 0)::int as soma,
+                                       count(*) filter (where fundador)::int as fund
+                                  from public.assinaturas group by 1, 2`;
+  const n = (s: string) => linhas.filter((l: any) => l.status === s).reduce((t: number, l: any) => t + l.n, 0);
+  const pagantes = linhas.filter((l: any) => ATIVOS.includes(l.status));
+  // receita mensal recorrente: o plano anual entra como 1/12 por mês
+  const mrr = linhas.filter((l: any) => l.status === 'active' || l.status === 'past_due')
+    .reduce((t: number, l: any) => t + (l.intervalo === 'year' ? Math.round(l.soma / 12) : l.soma), 0);
   return {
-    config: { preco_centavos: cfg.preco_centavos, dias_teste: cfg.dias_teste, vendas_abertas: cfg.vendas_abertas, modo: cfg.modo, atualizado_em: cfg.atualizado_em },
-    stripe: { chave: !!deps.stripe, modoChave: modoDaChave(deps.chave), conectada: !!(cfg.stripe_price_id && seg?.webhook_endpoint_id && cfg.modo === modoDaChave(deps.chave)) },
+    config: { preco_centavos: cfg.preco_centavos, preco_anual_centavos: cfg.preco_anual_centavos, fundador_ate: cfg.fundador_ate, dias_teste: cfg.dias_teste, vendas_abertas: cfg.vendas_abertas, modo: cfg.modo, atualizado_em: cfg.atualizado_em },
+    stripe: { chave: !!deps.stripe, modoChave: modoDaChave(deps.chave), conectada: !!(cfg.stripe_price_id && seg?.webhook_endpoint_id && cfg.modo === modoDaChave(deps.chave)), anual: !!cfg.stripe_price_anual_id },
     numeros: { ativos: n('active'), em_teste: n('trialing'), pendentes: n('past_due') + n('unpaid'), cancelados: n('canceled'), mrr_centavos: mrr,
+      anuais: pagantes.filter((l: any) => l.intervalo === 'year').reduce((t: number, l: any) => t + l.n, 0),
+      fundadores: pagantes.reduce((t: number, l: any) => t + l.fund, 0),
       cortesias: (await deps.sql`select count(*)::int as n from public.assinaturas where cortesia and not bloqueado`)[0].n },
   };
 }
 
-async function criarPreco(deps: Deps, produto: string, centavos: number) {
-  return (await deps.stripe.prices.create({ product: produto, currency: 'brl', unit_amount: centavos, recurring: { interval: 'month' }, metadata: { app: 'pingo' } })).id;
+async function criarPreco(deps: Deps, produto: string, centavos: number, intervalo: 'month' | 'year' = 'month') {
+  return (await deps.stripe.prices.create({ product: produto, currency: 'brl', unit_amount: centavos, recurring: { interval: intervalo },
+    nickname: intervalo === 'year' ? 'Anual' : 'Mensal', metadata: { app: 'pingo', plano: intervalo === 'year' ? 'anual' : 'mensal' } })).id;
 }
+// Reaproveita um preço da Stripe se ainda bate com o valor e o intervalo; senão, cria outro.
+async function precoValido(deps: Deps, id: string | null, produto: string, centavos: number, intervalo: 'month' | 'year') {
+  if (id) {
+    try {
+      const p = await deps.stripe.prices.retrieve(id);
+      if (p.active && p.unit_amount === centavos && p.product === produto && (p.recurring?.interval ?? 'month') === intervalo) return p.id;
+    } catch { /* preço de outro modo ou apagado */ }
+  }
+  return await criarPreco(deps, produto, centavos, intervalo);
+}
+const dataValida = (t: unknown) => typeof t === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t) && !isNaN(Date.parse(t + 'T12:00:00Z'));
 
 export async function handler(req: Request, deps: Deps): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors(req, deps.origens) });
@@ -129,12 +148,9 @@ export async function handler(req: Request, deps: Deps): Promise<Response> {
       const mesmoModo = cfg.modo === modo;
       let produto: string | null = null;
       if (mesmoModo && cfg.stripe_product_id) { try { produto = (await stripe.products.retrieve(cfg.stripe_product_id)).id; } catch { produto = null; } }
-      const produtoId: string = produto ?? (await stripe.products.create({ name: 'Pingo — assinatura mensal', metadata: { app: 'pingo' } })).id;
-      let preco: string | null = null;
-      if (mesmoModo && cfg.stripe_price_id) {
-        try { const p = await stripe.prices.retrieve(cfg.stripe_price_id); if (p.active && p.unit_amount === cfg.preco_centavos && p.product === produtoId) preco = p.id; } catch { preco = null; }
-      }
-      if (!preco) preco = await criarPreco(deps, produtoId, cfg.preco_centavos);
+      const produtoId: string = produto ?? (await stripe.products.create({ name: 'Pingo — assinatura', metadata: { app: 'pingo' } })).id;
+      const preco = await precoValido(deps, mesmoModo ? cfg.stripe_price_id : null, produtoId, cfg.preco_centavos, 'month');
+      const precoAnual = await precoValido(deps, mesmoModo ? cfg.stripe_price_anual_id : null, produtoId, cfg.preco_anual_centavos, 'year');
       // webhook: remove o antigo deste endereço e cria um novo (o segredo só vem na criação)
       const existentes = await stripe.webhookEndpoints.list({ limit: 100 });
       for (const w of existentes.data) if (w.url === deps.webhookUrl) await stripe.webhookEndpoints.del(w.id);
@@ -149,7 +165,7 @@ export async function handler(req: Request, deps: Deps): Promise<Response> {
           subscription_cancel: { enabled: true, mode: 'at_period_end', cancellation_reason: { enabled: true, options: ['too_expensive', 'unused', 'other'] } },
         },
       });
-      await sql`update public.config_cobranca set stripe_product_id = ${produtoId}, stripe_price_id = ${preco}, stripe_portal_config_id = ${portal.id}, modo = ${modo}, atualizado_em = now() where id = 1`;
+      await sql`update public.config_cobranca set stripe_product_id = ${produtoId}, stripe_price_id = ${preco}, stripe_price_anual_id = ${precoAnual}, stripe_portal_config_id = ${portal.id}, modo = ${modo}, atualizado_em = now() where id = 1`;
       await sql`insert into public.cobranca_segredos (id, modo, webhook_endpoint_id, webhook_secret, atualizado_em) values (1, ${modo}, ${wh.id}, ${wh.secret}, now())
                 on conflict (id) do update set modo = excluded.modo, webhook_endpoint_id = excluded.webhook_endpoint_id, webhook_secret = excluded.webhook_secret, atualizado_em = now()`;
       return resposta(req, deps, await resumo(deps));
@@ -158,31 +174,41 @@ export async function handler(req: Request, deps: Deps): Promise<Response> {
     if (corpo.acao === 'salvar') {
       const centavos = Math.round(Number(corpo.preco_centavos));
       const dias = Math.round(Number(corpo.dias_teste));
+      const [cfg] = await sql`select *, fundador_ate::text as fundador_ate from public.config_cobranca where id = 1`;
+      const anualC = corpo.preco_anual_centavos === undefined ? cfg.preco_anual_centavos : Math.round(Number(corpo.preco_anual_centavos));
+      const fundAte = corpo.fundador_ate === undefined ? cfg.fundador_ate : (corpo.fundador_ate || null);
       if (!Number.isFinite(centavos) || centavos < 100 || centavos > 1000000) return resposta(req, deps, { erro: 'Preço inválido: use um valor entre R$ 1,00 e R$ 10.000,00.' }, 400);
+      if (!Number.isFinite(anualC) || anualC < 100 || anualC > 10000000) return resposta(req, deps, { erro: 'Preço anual inválido: use um valor entre R$ 1,00 e R$ 100.000,00.' }, 400);
+      if (fundAte !== null && !dataValida(fundAte)) return resposta(req, deps, { erro: 'Data da oferta de fundador inválida.' }, 400);
       if (!Number.isFinite(dias) || dias < 0 || dias > 60) return resposta(req, deps, { erro: 'Dias de teste: de 0 a 60.' }, 400);
-      const [cfg] = await sql`select * from public.config_cobranca where id = 1`;
       const conectada = !!(stripe && cfg.stripe_price_id && cfg.modo === modoDaChave(deps.chave));
       if (corpo.vendas_abertas && !conectada) return resposta(req, deps, { erro: 'Conecte a Stripe antes de abrir as vendas.' }, 400);
-      let precoId = cfg.stripe_price_id, migrados = 0, falhas = 0;
-      if (conectada && centavos !== cfg.preco_centavos) {
-        precoId = await criarPreco(deps, cfg.stripe_product_id, centavos);
-        try { await stripe.prices.update(cfg.stripe_price_id, { active: false }); } catch { /* preço antigo já arquivado */ }
-      }
-      await sql`update public.config_cobranca set preco_centavos = ${centavos}, dias_teste = ${dias}, vendas_abertas = ${!!corpo.vendas_abertas}, stripe_price_id = ${precoId}, atualizado_em = now() where id = 1`;
+      let precoId = cfg.stripe_price_id, anualId = cfg.stripe_price_anual_id, migrados = 0, falhas = 0, fundadores = 0;
+      const trocar = async (antigo: string | null, valor: number, intervalo: 'month' | 'year') => {
+        const novo = await criarPreco(deps, cfg.stripe_product_id, valor, intervalo);
+        if (antigo) { try { await stripe.prices.update(antigo, { active: false }); } catch { /* já arquivado */ } }
+        return novo;
+      };
+      if (conectada && centavos !== cfg.preco_centavos) precoId = await trocar(cfg.stripe_price_id, centavos, 'month');
+      if (conectada && (anualC !== cfg.preco_anual_centavos || !anualId)) anualId = await trocar(anualId, anualC, 'year');
+      await sql`update public.config_cobranca set preco_centavos = ${centavos}, preco_anual_centavos = ${anualC}, fundador_ate = ${fundAte},
+                dias_teste = ${dias}, vendas_abertas = ${!!corpo.vendas_abertas}, stripe_price_id = ${precoId}, stripe_price_anual_id = ${anualId}, atualizado_em = now() where id = 1`;
       if (conectada && corpo.aplicar_atuais && precoId) {
-        const subs = await sql`select stripe_subscription_id from public.assinaturas where status = any(${ATIVOS}) and stripe_subscription_id is not null`;
+        const subs = await sql`select stripe_subscription_id, fundador from public.assinaturas where status = any(${ATIVOS}) and stripe_subscription_id is not null`;
         for (const s of subs) {
+          if (s.fundador) { fundadores++; continue; } // preço de fundador é para sempre
           try {
             const sub = await stripe.subscriptions.retrieve(s.stripe_subscription_id);
             const item = sub.items.data[0];
-            if (item && item.price.id !== precoId) {
-              await stripe.subscriptions.update(sub.id, { items: [{ id: item.id, price: precoId }], proration_behavior: 'none' });
+            const alvo = item?.price?.recurring?.interval === 'year' ? anualId : precoId;
+            if (item && alvo && item.price.id !== alvo) {
+              await stripe.subscriptions.update(sub.id, { items: [{ id: item.id, price: alvo }], proration_behavior: 'none' });
               migrados++;
             }
           } catch (e) { console.error('migrar preço', s.stripe_subscription_id, e); falhas++; }
         }
       }
-      return resposta(req, deps, { ...(await resumo(deps)), migrados, falhas });
+      return resposta(req, deps, { ...(await resumo(deps)), migrados, falhas, fundadores });
     }
     return resposta(req, deps, { erro: 'Ação desconhecida.' }, 400);
   } catch (e) {

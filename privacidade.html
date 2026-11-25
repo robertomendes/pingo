@@ -16,7 +16,7 @@ if (location.hostname === 'robertomendes.github.io') location.replace('https://p
 <header><a class="marca" href="./"><svg width="30" height="32" viewBox="0 0 120 130" aria-hidden="true"><path d="M60 6C60 6 18 56 18 84a42 42 0 0 0 84 0C102 56 60 6 60 6z" fill="#2F4BC7"/></svg>Pingo</a><a href="termos.html">Termos de uso</a></header>
 <main>
 <h1>Política de privacidade</h1>
-<p class="versao">Versão de 18 de novembro de 2026 · vale para o app Pingo</p>
+<p class="versao">Versão de 25 de novembro de 2026 · vale para o app Pingo</p>
 
 <div class="resumo">
 <h2>Em poucas palavras</h2>
@@ -35,7 +35,8 @@ if (location.hostname === 'robertomendes.github.io') location.replace('https://p
 <h3>Do responsável</h3>
 <ul>
 <li><b>Conta:</b> e-mail e senha. A senha é guardada de forma cifrada e ninguém do Pingo consegue lê-la.</li>
-<li><b>Assinatura:</b> situação da assinatura (em teste, ativa, cancelada), valor e datas de cobrança. Os dados do cartão são digitados direto na página da Stripe, nossa processadora de pagamentos. O Pingo não vê nem guarda o número do cartão.</li>
+<li><b>Assinatura:</b> situação da assinatura (em teste, ativa, cancelada), plano (mensal ou anual), valor e datas de cobrança. Os dados do cartão são digitados direto na página da Stripe, nossa processadora de pagamentos. O Pingo não vê nem guarda o número do cartão.</li>
+<li><b>CPF de quem paga:</b> pedido na hora de assinar, só para emitir o recibo e cumprir obrigações fiscais (base legal: cumprimento de obrigação legal). Ele fica guardado no cadastro de pagamento da Stripe, não no banco de dados do app, e não aparece para mais ninguém.</li>
 <li><b>Consentimento:</b> data, versão destes documentos e o tipo de navegador no momento em que você aceitou, para comprovar a autorização.</li>
 <li><b>Registros técnicos:</b> endereço IP e horários de acesso, guardados pelos nossos provedores por segurança e pelo prazo que a lei exige (Marco Civil da Internet, Lei nº 12.965/2014).</li>
 </ul>
@@ -67,7 +68,7 @@ if (location.hostname === 'robertomendes.github.io') location.replace('https://p
 <p>Não vendemos nem cedemos dados. Usamos alguns fornecedores que tratam dados apenas para prestar o serviço ao Pingo, seguindo as nossas instruções:</p>
 <ul>
 <li><b>Supabase:</b> banco de dados, login e backup, com servidores na região de São Paulo, Brasil. Cada conta só enxerga os próprios dados.</li>
-<li><b>Stripe:</b> pagamento da assinatura. Recebe os dados do cartão e o e-mail do responsável; nunca recebe dados da criança.</li>
+<li><b>Stripe:</b> pagamento da assinatura. Recebe os dados do cartão, o e-mail e o CPF de quem paga; nunca recebe dados da criança.</li>
 <li><b>Resend:</b> envio dos e-mails de serviço. Recebe apenas o e-mail do responsável.</li>
 <li><b>Netlify:</b> hospedagem do app. Registra dados técnicos de acesso, sem acesso ao conteúdo das contas.</li>
 </ul>

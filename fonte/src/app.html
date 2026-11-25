@@ -144,6 +144,16 @@ h2{margin:0;font-size:28px;font-weight:900}
 .perfil .avatar{width:80px;height:80px;font-size:36px}
 .modal{position:fixed;inset:0;background:rgba(28,35,64,.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
 .modal .caixa{background:#fff;border-radius:28px;padding:24px;max-width:760px;width:100%;max-height:90vh;overflow:auto;display:flex;flex-direction:column;gap:16px}
+.planos{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.planos legend{margin-bottom:8px}
+.plano{display:flex;gap:14px;align-items:flex-start;border:3px solid var(--linha);border-radius:20px;padding:14px 16px;cursor:pointer;background:#fff}
+.plano:has(input:checked){border-color:var(--azul,#2F4BC7);background:#F3F6FF}
+.plano input{width:24px;height:24px;flex:none;margin-top:4px;accent-color:#2F4BC7}
+.plano-txt{display:flex;flex-direction:column;gap:2px;font-size:17px}
+.plano-txt b{font-size:19px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.plano-preco{font-size:28px;font-weight:900}
+.plano-preco small{font-size:16px;font-weight:800;color:#4A5375}
+.aviso-fundador{background:#FFF1E0;border:2px solid #F2B36B;color:#5E3300}
 .replays{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
 .replay{border:2px solid var(--linha);border-radius:18px;padding:10px;display:flex;flex-direction:column;gap:6px}
 .replay canvas{width:100%;height:120px;background:#FBFCFF;border-radius:12px}
@@ -241,7 +251,7 @@ function recognize(strokes, w, h) {
 
 /* ---------- Dados: ficam no aparelho e, com conta, têm cópia na nuvem ---------- */
 const CHAVE = 'pingo.v1';
-const TERMOS_VERSAO = '2026-11-18'; // mude a data quando os Termos ou a Política mudarem: todos aceitam de novo
+const TERMOS_VERSAO = '2026-11-25'; // mude a data quando os Termos ou a Política mudarem: todos aceitam de novo
 const MAX_LICOES = 400;
 let memoria = null;
 function novoId(p) { try { if (window.crypto && crypto.randomUUID) return p + '-' + crypto.randomUUID(); } catch (e) { } return p + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
@@ -309,8 +319,8 @@ const NUVEM = (function () {
     enviarLicoes: async rows => { if (rows.length) ok(await sb.from('licoes').upsert(rows, { onConflict: 'id', ignoreDuplicates: true })); },
     apagarCriancas: async ids => { if (ids.length) ok(await sb.from('criancas').delete().in('id', ids)); },
     cobranca: async () => {
-      const a = await sb.from('assinaturas').select('status,preco_centavos,periodo_fim,teste_fim,cancelar_no_fim,ja_teve_teste,cortesia,bloqueado').maybeSingle();
-      const c = await sb.from('config_cobranca').select('preco_centavos,dias_teste,vendas_abertas,modo').eq('id', 1).maybeSingle();
+      const a = await sb.from('assinaturas').select('status,preco_centavos,intervalo,fundador,periodo_fim,teste_fim,cancelar_no_fim,ja_teve_teste,cortesia,bloqueado').maybeSingle();
+      const c = await sb.from('config_cobranca').select('preco_centavos,preco_anual_centavos,fundador_ate,dias_teste,vendas_abertas,modo').eq('id', 1).maybeSingle();
       const adm = await sb.rpc('sou_admin');
       const t = await sb.from('consentimentos').select('versao').order('aceito_em', { ascending: false }).limit(1);
       return { assin: ok(a), config: ok(c), admin: !!ok(adm), termos: (ok(t)[0] || {}).versao || null };
@@ -498,6 +508,17 @@ async function atualizarCobranca() {
 }
 function precisaAceite() { return !!(logado() && db.cobranca && ('termos' in db.cobranca) && db.cobranca.termos !== TERMOS_VERSAO); }
 function reais(c) { return 'R$ ' + (Number(c || 0) / 100).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+function dataDia(d) { return d ? String(d).slice(0, 10).split('-').reverse().join('/') : ''; } // 'AAAA-MM-DD' sem fuso
+function hojeBR() { try { return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }); } catch (e) { return new Date().toISOString().slice(0, 10); } }
+function fundadorAberto(cfg) { return !!(cfg && cfg.fundador_ate && hojeBR() <= String(cfg.fundador_ate).slice(0, 10)); }
+function cpfValido(t) {
+  const d = String(t || '').replace(/\D/g, '');
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return null;
+  for (const n of [9, 10]) { let s = 0; for (let i = 0; i < n; i++) s += Number(d[i]) * (n + 1 - i); if (((s * 10) % 11) % 10 !== Number(d[n])) return null; }
+  return d;
+}
+function mascaraCpf(t) { const d = String(t || '').replace(/\D/g, '').slice(0, 11); return d.replace(/^(\d{3})(\d)/, '$1.$2').replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d{1,2})$/, '.$1-$2'); }
+const porPeriodo = i => i === 'year' ? 'por ano' : 'por mês';
 function dataCurta(iso) { if (!iso) return ''; const d = new Date(iso); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); }
 const espera = ms => new Promise(r => setTimeout(r, ms));
 
@@ -859,6 +880,20 @@ async function enviarAceite(fd) {
   aceiteOcupado = false; if (tela === 'aceite') render();
 }
 
+let assinarPlano = 'anual', assinarCpf = '', assinarCpfErro = null;
+function guardarAssinar() {
+  const p = app.querySelector('input[name=plano]:checked'), c = app.querySelector('input[name=cpf]');
+  if (p) assinarPlano = p.value; if (c) assinarCpf = c.value;
+}
+async function enviarAssinar(fd) {
+  assinarPlano = String(fd.get('plano') || assinarPlano); assinarCpf = mascaraCpf(fd.get('cpf'));
+  if (!cpfValido(assinarCpf)) { assinarCpfErro = assinarCpf ? 'CPF inválido, confira os números.' : 'Digite o CPF.'; render(); const c = app.querySelector('input[name=cpf]'); if (c) c.focus(); return; }
+  assinarCpfErro = null; pagamento = { estado: 'indo', msg: null }; render();
+  try {
+    const r = await NUVEM.funcao('assinatura', { acao: 'checkout', plano: assinarPlano, cpf: assinarCpf });
+    if (r && r.url) { location.href = r.url; return; } throw new Error('Resposta sem endereço de pagamento.');
+  } catch (e) { pagamento = { estado: null, msg: e.daFuncao ? e.message : traduzErro(e) }; render(); }
+}
 VIEWS.assinar = function () {
   const c = db.cobranca, cfg = c && c.config, a = c && c.assin;
   let h = '<main class="tela" style="max-width:640px;justify-content:center">';
@@ -882,13 +917,23 @@ VIEWS.assinar = function () {
     h += topo('Assinaturas em breve', 'O Pingo está quase pronto para novas famílias.');
     cartao = '<p style="margin:0;font-size:17px;font-weight:600;line-height:1.5">Avisaremos por e-mail assim que as assinaturas abrirem.</p>';
   } else {
-    const teste = cfg.dias_teste > 0 && !(a && a.ja_teve_teste);
+    const teste = cfg.dias_teste > 0 && !(a && a.ja_teve_teste), anual = cfg.preco_anual_centavos > 0, fund = fundadorAberto(cfg);
+    const plano = anual ? assinarPlano : 'mensal', ocupado = pagamento.estado === 'indo';
+    const economia = anual ? Math.floor((1 - cfg.preco_anual_centavos / (12 * cfg.preco_centavos)) * 100) : 0;
     h += topo(a && a.status === 'canceled' ? 'Sua assinatura terminou' : 'Assine o Pingo', a && a.status === 'canceled' ? 'Assine de novo para continuar de onde parou.' : 'Prática diária de matemática que a criança pede para fazer.');
-    cartao = '<p style="margin:0;display:flex;align-items:baseline;gap:8px"><span style="font-size:44px;font-weight:900">' + reais(cfg.preco_centavos) + '</span><span style="font-size:20px;font-weight:800;color:#4A5375">por mês</span></p>' +
+    const opcao = (v, tit, preco, sub, selo) => '<label class="plano"><input type="radio" name="plano" value="' + v + '"' + (plano === v ? ' checked' : '') + '>' +
+      '<span class="plano-txt"><b>' + tit + (selo ? ' <span class="selo selo-ok">' + selo + '</span>' : '') + '</b><span class="plano-preco">' + preco + '</span><span class="peq">' + sub + '</span></span></label>';
+    cartao = '<form data-form="assinar" style="display:flex;flex-direction:column;gap:16px" novalidate>' +
+      (fund ? '<p class="aviso aviso-fundador" style="margin:0;font-size:17px"><span class="txt"><b>Preço de fundador.</b> Assinando até ' + dataDia(cfg.fundador_ate) + ', você mantém este valor enquanto continuar assinante.</span></p>' : '') +
+      '<fieldset class="planos"><legend class="rotulo">Escolha o plano</legend>' +
+      (anual ? opcao('anual', 'Anual', reais(cfg.preco_anual_centavos) + ' <small>por ano</small>', 'Sai por ' + reais(Math.round(cfg.preco_anual_centavos / 12)) + ' por mês, num pagamento só.', economia > 0 ? 'economize ' + economia + '%' : '') : '') +
+      opcao('mensal', 'Mensal', reais(cfg.preco_centavos) + ' <small>por mês</small>', 'Cobrado todo mês. Cancele quando quiser.', '') + '</fieldset>' +
       (teste ? '<p class="aviso aviso-ok" style="margin:0;font-size:17px"><span class="txt"><b>' + cfg.dias_teste + ' dias grátis.</b> A primeira cobrança só acontece depois do teste, e dá para cancelar antes.</span></p>' : '') +
+      '<label class="campo">CPF de quem paga<input name="cpf" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="000.000.000-00" value="' + esc(assinarCpf) + '" aria-describedby="cpfAjuda"' + (assinarCpfErro ? ' aria-invalid="true"' : '') + ' required></label>' +
+      '<p id="cpfAjuda" class="peq" style="margin:-8px 0 0;line-height:1.5">' + (assinarCpfErro ? '<span class="erro-txt">' + esc(assinarCpfErro) + '</span> ' : '') + 'Vai no recibo, como pede a Receita. Não aparece para mais ninguém.</p>' +
       '<ul style="margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px;font-size:17px;font-weight:700"><li>Escrita à mão com correção na hora</li><li>Trilha que avança no ritmo da criança</li><li>Painel dos pais com replay e dicas</li><li>Quantas crianças quiser na mesma conta</li><li>Backup e uso em mais de um aparelho</li></ul>' +
-      '<button class="btn btn-laranja" data-act="assinar"' + (pagamento.estado === 'indo' ? ' disabled' : '') + '>' + (pagamento.estado === 'indo' ? 'Abrindo pagamento seguro…' : (teste ? 'Começar teste grátis' : 'Assinar com cartão de crédito')) + '</button>' +
-      '<p class="peq" style="margin:0;line-height:1.5">Cobrança mensal recorrente no cartão de crédito. Cancele quando quiser na Área dos pais, sem multa; o acesso continua até o fim do período pago. O pagamento é processado pela Stripe: o Pingo não vê nem guarda os dados do cartão.</p>';
+      '<button class="btn btn-laranja" type="button" data-act="assinar"' + (ocupado ? ' disabled' : '') + '>' + (ocupado ? 'Abrindo pagamento seguro…' : (teste ? 'Começar teste grátis' : 'Assinar com cartão de crédito')) + '</button>' +
+      '<p class="peq" style="margin:0;line-height:1.5">Cobrança recorrente no cartão de crédito: todo mês no plano mensal, uma vez por ano no anual. Cancele quando quiser na Área dos pais, sem multa; o acesso continua até o fim do período pago. O pagamento é processado pela Stripe: o Pingo não vê nem guarda os dados do cartão.</p></form>';
   }
   if (pagamento.msg) cartao += '<p class="' + (pagamento.neutro ? 'peq' : 'erro-txt') + '" role="alert" style="margin:0;font-size:16px">' + esc(pagamento.msg) + '</p>';
   if (pagamento.verificar) cartao += '<button class="btn btn-claro btn-pequeno" data-act="verificarAssinatura">Já paguei, verificar de novo</button>';
@@ -905,8 +950,8 @@ function cartaoAssinatura() {
   else if (a && a.bloqueado) linha = 'Acesso suspenso pelo Pingo.';
   else if (a && a.cortesia && !ativa) linha = 'Acesso de cortesia liberado pelo Pingo, sem cobrança.';
   else if (!a || a.status === 'nenhuma') linha = 'Sem assinatura.';
-  else if (a.status === 'trialing') linha = (a.cancelar_no_fim ? 'Teste grátis cancelado: o acesso vai até ' + dataCurta(a.teste_fim || a.periodo_fim) + ', sem cobrança.' : 'Teste grátis até ' + dataCurta(a.teste_fim || a.periodo_fim) + '. Depois, ' + reais(a.preco_centavos) + ' por mês.');
-  else if (a.status === 'active') linha = a.cancelar_no_fim ? 'Cancelada: o acesso continua até ' + dataCurta(a.periodo_fim) + ', sem novas cobranças.' : 'Ativa · ' + reais(a.preco_centavos) + ' por mês · próxima cobrança em ' + dataCurta(a.periodo_fim) + '.';
+  else if (a.status === 'trialing') linha = (a.cancelar_no_fim ? 'Teste grátis cancelado: o acesso vai até ' + dataCurta(a.teste_fim || a.periodo_fim) + ', sem cobrança.' : 'Teste grátis até ' + dataCurta(a.teste_fim || a.periodo_fim) + '. Depois, ' + reais(a.preco_centavos) + ' ' + porPeriodo(a.intervalo) + (a.fundador ? ', preço de fundador.' : '.'));
+  else if (a.status === 'active') linha = a.cancelar_no_fim ? 'Cancelada: o acesso continua até ' + dataCurta(a.periodo_fim) + ', sem novas cobranças.' : 'Ativa · ' + reais(a.preco_centavos) + ' ' + porPeriodo(a.intervalo) + (a.fundador ? ' (preço de fundador)' : '') + ' · próxima cobrança em ' + dataCurta(a.periodo_fim) + '.';
   else if (a.status === 'past_due') linha = 'Pagamento pendente: atualize o cartão para não perder o acesso.';
   else linha = 'Assinatura encerrada.';
   return '<section class="cartao" style="display:flex;flex-direction:column;gap:12px"><h2 style="font-size:22px">Assinatura</h2>' +
@@ -973,10 +1018,16 @@ VIEWS.admin = function () {
     '<div class="metrica"><b>' + n.ativos + '</b><span>ativos</span></div><div class="metrica"><b>' + n.em_teste + '</b><span>em teste grátis</span></div>' +
     '<div class="metrica"><b>' + n.pendentes + '</b><span>pagamento pendente</span></div><div class="metrica"><b>' + n.cancelados + '</b><span>cancelados</span></div>' +
     (n.cortesias ? '<div class="metrica"><b>' + n.cortesias + '</b><span>cortesia</span></div>' : '') +
+    (n.anuais ? '<div class="metrica"><b>' + n.anuais + '</b><span>no plano anual</span></div>' : '') +
+    (n.fundadores ? '<div class="metrica"><b>' + n.fundadores + '</b><span>fundadores</span></div>' : '') +
     '<div class="metrica"><b>' + reais(n.mrr_centavos) + '</b><span>receita mensal recorrente</span></div></div></section>';
   h += cartaoUsuarios();
   h += '<form class="cartao" data-form="admin" style="display:flex;flex-direction:column;gap:14px" novalidate><h2 style="font-size:22px">Preço e vendas</h2>' +
     '<label class="campo">Preço mensal (R$)<input name="preco" inputmode="decimal" autocomplete="off" value="' + (cfg.preco_centavos / 100).toFixed(2).replace('.', ',') + '" required></label>' +
+    '<label class="campo">Preço anual (R$)<input name="anual" inputmode="decimal" autocomplete="off" value="' + ((cfg.preco_anual_centavos || 0) / 100).toFixed(2).replace('.', ',') + '" required></label>' +
+    '<label class="campo">Oferta de fundador até (em branco = sem oferta)<input name="fundador" type="date" value="' + esc(cfg.fundador_ate || '') + '"></label>' +
+    '<p class="peq" style="margin:-6px 0 0;line-height:1.5">Quem assina até essa data mantém o preço enquanto continuar assinante: reajustes aplicados "a quem já assina" pulam os fundadores.' + (cfg.fundador_ate && !fundadorAberto(cfg) ? ' <b>A oferta terminou em ' + dataDia(cfg.fundador_ate) + ': hora de subir o preço para os novos.</b>' : '') + '</p>' +
+    (st.conectada && !st.anual ? '<p class="erro-txt" style="margin:0;font-size:16px">O plano anual ainda não existe na Stripe: toque em Salvar ou Reconectar para criá-lo.</p>' : '') +
     '<label class="campo">Dias de teste grátis (0 a 60)<input name="dias" inputmode="numeric" autocomplete="off" value="' + cfg.dias_teste + '" required></label>' +
     '<label style="display:flex;gap:12px;align-items:center;font-size:17px;font-weight:700"><input type="checkbox" name="abertas"' + (cfg.vendas_abertas ? ' checked' : '') + ' style="width:24px;height:24px">Vendas abertas (novas famílias podem assinar)</label>' +
     '<label style="display:flex;gap:12px;align-items:flex-start;font-size:17px;font-weight:700;line-height:1.4"><input type="checkbox" name="atuais" style="width:24px;height:24px;flex:none;margin-top:2px">Aplicar o novo preço também a quem já assina (vale a partir da próxima cobrança de cada um)</label>' +
@@ -989,12 +1040,17 @@ async function enviarAdmin(fd) {
   const txt = String(fd.get('preco') || '').trim().replace(/[^\d,\.]/g, '');
   const num = Number(txt.indexOf(',') >= 0 ? txt.replace(/\./g, '').replace(',', '.') : txt);
   const dias = Number(String(fd.get('dias') || '0').trim());
+  const ta = String(fd.get('anual') || '').trim().replace(/[^\d,\.]/g, '');
+  const anual = Number(ta.indexOf(',') >= 0 ? ta.replace(/\./g, '').replace(',', '.') : ta);
+  const fundador = String(fd.get('fundador') || '').trim();
   if (!isFinite(num) || num < 1) { adminMsg = { t: 'Preço inválido. Exemplo: 49,90' }; return render(); }
+  if (!isFinite(anual) || anual < 1) { adminMsg = { t: 'Preço anual inválido. Exemplo: 297,00' }; return render(); }
+  if (fundador && !/^\d{4}-\d{2}-\d{2}$/.test(fundador)) { adminMsg = { t: 'Data da oferta de fundador inválida.' }; return render(); }
   if (!Number.isInteger(dias) || dias < 0 || dias > 60) { adminMsg = { t: 'Dias de teste: um número de 0 a 60.' }; return render(); }
   adminOcupado = true; adminMsg = null; render();
   try {
-    const r = await NUVEM.funcao('admin-cobranca', { acao: 'salvar', preco_centavos: Math.round(num * 100), dias_teste: dias, vendas_abertas: !!fd.get('abertas'), aplicar_atuais: !!fd.get('atuais') });
-    adminDados = r; adminMsg = { ok: true, t: 'Salvo.' + (r.migrados ? ' Novo preço aplicado a ' + r.migrados + (r.migrados === 1 ? ' assinante.' : ' assinantes.') : '') + (r.falhas ? ' ' + r.falhas + ' não puderam ser atualizados; tente de novo.' : '') };
+    const r = await NUVEM.funcao('admin-cobranca', { acao: 'salvar', preco_centavos: Math.round(num * 100), preco_anual_centavos: Math.round(anual * 100), fundador_ate: fundador, dias_teste: dias, vendas_abertas: !!fd.get('abertas'), aplicar_atuais: !!fd.get('atuais') });
+    adminDados = r; adminMsg = { ok: true, t: 'Salvo.' + (r.migrados ? ' Novo preço aplicado a ' + r.migrados + (r.migrados === 1 ? ' assinante.' : ' assinantes.') : '') + (r.fundadores ? ' ' + r.fundadores + (r.fundadores === 1 ? ' fundador mantido' : ' fundadores mantidos') + ' no preço antigo.' : '') + (r.falhas ? ' ' + r.falhas + ' não puderam ser atualizados; tente de novo.' : '') };
     await atualizarCobranca();
   } catch (e) { adminMsg = { t: e.daFuncao ? e.message : traduzErro(e) }; }
   adminOcupado = false; if (tela === 'admin') render();
@@ -1242,11 +1298,7 @@ const ACOES = {
   privacidade: () => { guardarForm(); try { window.open('../privacidade.html', '_blank', 'noopener'); } catch (e) { location.href = '../privacidade.html'; } },
   termos: () => { guardarForm(); try { window.open('../termos.html', '_blank', 'noopener'); } catch (e) { location.href = '../termos.html'; } },
   sincAgora: () => { sincronizar(); atualizarSelo(); },
-  assinar: async () => {
-    pagamento = { estado: 'indo', msg: null }; render();
-    try { const r = await NUVEM.funcao('assinatura', { acao: 'checkout' }); if (r && r.url) { location.href = r.url; return; } throw new Error('Resposta sem endereço de pagamento.'); }
-    catch (e) { pagamento = { estado: null, msg: e.daFuncao ? e.message : traduzErro(e) }; render(); }
-  },
+  assinar: () => { const f = app.querySelector('form[data-form=assinar]'); if (f) { if (f.requestSubmit) f.requestSubmit(); else enviarAssinar(new FormData(f)); } },
   portal: async () => {
     pagamento = { estado: 'indo', msg: null }; render();
     try { const r = await NUVEM.funcao('assinatura', { acao: 'portal' }); if (r && r.url) { location.href = r.url; return; } throw new Error('Resposta sem endereço do portal.'); }
@@ -1314,6 +1366,11 @@ app.addEventListener('click', e => {
   if (el.type === 'checkbox') { ACOES[el.dataset.act] && ACOES[el.dataset.act](el.dataset, el); return; }
   e.preventDefault(); const f = ACOES[el.dataset.act]; if (f) f(el.dataset, el);
 });
+app.addEventListener('input', e => {
+  const t = e.target;
+  if (t.name === 'cpf' && t.closest('form[data-form=assinar]')) { const m = mascaraCpf(t.value); if (m !== t.value) t.value = m; assinarCpf = m; }
+});
+app.addEventListener('change', e => { if (e.target.name === 'plano') assinarPlano = e.target.value; });
 app.addEventListener('submit', e => {
   e.preventDefault(); const fd = new FormData(e.target);
   if (e.target.dataset.form === 'perfil') {
@@ -1324,6 +1381,7 @@ app.addEventListener('submit', e => {
   } else if (e.target.dataset.form === 'aceite') { enviarAceite(fd);
   } else if (e.target.dataset.form === 'conta') { enviarConta(fd);
   } else if (e.target.dataset.form === 'admin') { enviarAdmin(fd);
+  } else if (e.target.dataset.form === 'assinar') { enviarAssinar(fd);
   } else if (e.target.dataset.form === 'portao') {
     if (Number(fd.get('r')) === desafio.a * desafio.b) { paisAba = db.ativa || (db.criancas[0] && db.criancas[0].id); ir('pais'); }
     else { desafio = { a: 6 + Math.floor(Math.random() * 4), b: 6 + Math.floor(Math.random() * 4), erro: true }; render(); }

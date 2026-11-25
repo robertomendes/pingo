@@ -11,7 +11,7 @@ async def main():
         await pg.goto(BASE); await pg.wait_for_timeout(1200)
         t = await pg.locator('body').inner_text()
         check(pg.url == BASE and '10 minutos por dia' in t, 'visitante novo vê a página de vendas')
-        check('R$ 39' in t and 'R$ 59' in t and 'PREÇO DE LANÇAMENTO' in t.upper(), 'preço de lançamento R$ 39 e normal R$ 59 aparecem')
+        check('R$ 39' in t and 'R$ 59' in t and 'PREÇO DE FUNDADOR' in t.upper() and 'R$ 297' in t and '31/12' in t, 'preço de fundador R$ 39, normal R$ 59, anual R$ 297 e prazo aparecem')
         check('{{' not in await pg.content(), 'nenhum campo do editor sobrou sem trocar')
         hrefs = await pg.eval_on_selector_all('a.cta', 'as => as.map(a => a.getAttribute("href"))')
         check(len(hrefs) >= 4 and all(h == '/app/' for h in hrefs), 'todos os botões levam ao app (%d)' % len(hrefs))

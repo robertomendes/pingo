@@ -10,6 +10,21 @@ type Deps = { stripe: any | null; sql: any; usuario: (req: Request) => Promise<U
 
 const ATIVOS = ['active', 'trialing', 'past_due'];
 
+// CPF: só dígitos, com os dois verificadores conferidos.
+export function cpfValido(txt: string): string | null {
+  const d = String(txt ?? '').replace(/\D/g, '');
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return null;
+  for (const n of [9, 10]) {
+    let soma = 0;
+    for (let i = 0; i < n; i++) soma += Number(d[i]) * (n + 1 - i);
+    if (((soma * 10) % 11) % 10 !== Number(d[n])) return null;
+  }
+  return d;
+}
+const cpfFormatado = (d: string) => `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+// Data de hoje no horário de Brasília (AAAA-MM-DD).
+export const hojeBR = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+
 function cors(req: Request, origens: string[]) {
   const o = req.headers.get('origin') || '';
   return {
@@ -34,8 +49,9 @@ export async function aplicarAssinatura(sql: any, sub: any): Promise<boolean> {
   const existe = (await sql`select 1 from auth.users where id = ${dono}`).length > 0;
   if (!existe) return false; // conta já excluída
   await sql`
-    insert into public.assinaturas (dono, stripe_customer_id, stripe_subscription_id, status, preco_centavos, periodo_fim, teste_fim, cancelar_no_fim, ja_teve_teste, atualizado_em)
+    insert into public.assinaturas (dono, stripe_customer_id, stripe_subscription_id, status, preco_centavos, intervalo, fundador, periodo_fim, teste_fim, cancelar_no_fim, ja_teve_teste, atualizado_em)
     values (${dono}, ${cliente}, ${sub.id}, ${sub.status}, ${item?.price?.unit_amount ?? null},
+            ${item?.price?.recurring?.interval === 'year' ? 'year' : 'month'}, ${sub.metadata?.fundador === 'sim'},
             ${fim ? new Date(fim * 1000) : null}, ${sub.trial_end ? new Date(sub.trial_end * 1000) : null},
             ${!!(sub.cancel_at_period_end || sub.cancel_at)}, ${!!sub.trial_end}, now())
     on conflict (dono) do update set
@@ -43,6 +59,8 @@ export async function aplicarAssinatura(sql: any, sub: any): Promise<boolean> {
       stripe_subscription_id = excluded.stripe_subscription_id,
       status = excluded.status,
       preco_centavos = excluded.preco_centavos,
+      intervalo = excluded.intervalo,
+      fundador = excluded.fundador,
       periodo_fim = excluded.periodo_fim,
       teste_fim = excluded.teste_fim,
       cancelar_no_fim = excluded.cancelar_no_fim,
@@ -64,7 +82,7 @@ export async function handler(req: Request, deps: Deps): Promise<Response> {
   try { corpo = await req.json(); } catch { /* corpo vazio */ }
   const { sql, stripe } = deps;
   try {
-    const [cfg] = await sql`select * from public.config_cobranca where id = 1`;
+    const [cfg] = await sql`select *, fundador_ate::text as fundador_ate from public.config_cobranca where id = 1`;
     const [a] = await sql`select * from public.assinaturas where dono = ${u.id}`;
     const portal = async () => (await stripe.billingPortal.sessions.create({
       customer: a.stripe_customer_id, return_url: deps.appUrl,
@@ -85,19 +103,31 @@ export async function handler(req: Request, deps: Deps): Promise<Response> {
       case 'checkout': {
         if (!cfg?.vendas_abertas || !cfg.stripe_price_id) return resposta(req, deps, { erro: 'As assinaturas ainda não estão abertas.' }, 409);
         if (a && ATIVOS.includes(a.status) && a.stripe_customer_id) return resposta(req, deps, { url: await portal(), jaAssinante: true });
+        const anual = corpo.plano === 'anual';
+        const precoId = anual ? cfg.stripe_price_anual_id : cfg.stripe_price_id;
+        if (!precoId) return resposta(req, deps, { erro: 'O plano anual ainda não está disponível.' }, 409);
+        const cpf = cpfValido(corpo.cpf);
+        if (!cpf) return resposta(req, deps, { erro: 'Confira o CPF: ele é necessário para o recibo.', campo: 'cpf' }, 400);
         let cliente = a?.stripe_customer_id;
         if (!cliente) {
           cliente = (await stripe.customers.create({ email: u.email, metadata: { user_id: u.id } })).id;
           await sql`insert into public.assinaturas (dono, stripe_customer_id) values (${u.id}, ${cliente})
                     on conflict (dono) do update set stripe_customer_id = excluded.stripe_customer_id, atualizado_em = now()`;
         }
+        // CPF do pagador no cadastro da Stripe (sai nos recibos e serve para o imposto).
+        const ids = await stripe.customers.listTaxIds(cliente, { limit: 10 });
+        if (!ids.data.some((t: any) => t.type === 'br_cpf' && String(t.value).replace(/\D/g, '') === cpf)) {
+          for (const t of ids.data) if (t.type === 'br_cpf') await stripe.customers.deleteTaxId(cliente, t.id);
+          await stripe.customers.createTaxId(cliente, { type: 'br_cpf', value: cpfFormatado(cpf) });
+        }
+        const fundador = !!cfg.fundador_ate && hojeBR() <= String(cfg.fundador_ate);
         const teste = cfg.dias_teste > 0 && !a?.ja_teve_teste;
         const sessao = await stripe.checkout.sessions.create({
           mode: 'subscription',
           customer: cliente,
           client_reference_id: u.id,
-          line_items: [{ price: cfg.stripe_price_id, quantity: 1 }],
-          subscription_data: { metadata: { user_id: u.id }, ...(teste ? { trial_period_days: cfg.dias_teste } : {}) },
+          line_items: [{ price: precoId, quantity: 1 }],
+          subscription_data: { metadata: { user_id: u.id, plano: anual ? 'anual' : 'mensal', fundador: fundador ? 'sim' : 'nao' }, ...(teste ? { trial_period_days: cfg.dias_teste } : {}) },
           payment_method_types: ['card'],
           payment_method_collection: 'always',
           locale: 'pt-BR',

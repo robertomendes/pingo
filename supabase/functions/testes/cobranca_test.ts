@@ -19,7 +19,12 @@ let seq = 0; const id = (p: string) => `${p}_${++seq}`;
 const agora = () => Math.floor(Date.now() / 1000);
 const S: any = { customers: {}, prices: {}, products: {}, subs: {}, webhooks: {}, sessoes: [] as any[] };
 const stripe: any = {
-  customers: { create: async (o: any) => (S.customers[id('cus')] = { ...o }, { id: `cus_${seq}` }) },
+  customers: {
+    create: async (o: any) => (S.customers[id('cus')] = { ...o, taxIds: [] }, { id: `cus_${seq}` }),
+    listTaxIds: async (c: string) => ({ data: [...S.customers[c].taxIds] }),
+    createTaxId: async (c: string, o: any) => { if (!/^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(o.value)) throw new Error('formato'); const t = { id: id('txi'), ...o }; S.customers[c].taxIds.push(t); return t; },
+    deleteTaxId: async (c: string, i: string) => { S.customers[c].taxIds = S.customers[c].taxIds.filter((t: any) => t.id !== i); },
+  },
   products: { create: async (o: any) => { const i = id('prod'); S.products[i] = o; return { id: i }; }, retrieve: async (i: string) => { if (!S.products[i]) throw new Error('no such product'); return { id: i }; } },
   prices: {
     create: async (o: any) => { const i = id('price'); S.prices[i] = { id: i, active: true, ...o }; return S.prices[i]; },
@@ -59,9 +64,11 @@ async function avisar(tipo: string, objeto: any, segredo?: string, eventoId?: st
 const A = { id: 'aaaaaaaa-0000-0000-0000-000000000001', email: 'pai@x.com' };
 const B = { id: 'bbbbbbbb-0000-0000-0000-000000000002', email: 'mae@x.com' };
 const ADM = { id: 'cccccccc-0000-0000-0000-000000000003', email: 'roberto@x.com' };
+const C = { id: 'cccccccc-0000-0000-0000-000000000004', email: 'fundadora@x.com' };
+const CPF = '529.982.247-25', CPF2 = '11144477735';
 await sql`insert into auth.users (id, email) values (${A.id}, ${A.email}), (${B.id}, ${B.email}), (${ADM.id}, ${ADM.email}) on conflict do nothing`;
 await sql`insert into public.admins (user_id) values (${ADM.id}) on conflict do nothing`;
-const usuario = async (req: Request) => { const h = req.headers.get('authorization') ?? ''; const u = [A, B, ADM].find((x) => h === 'Bearer ' + x.id); return u ?? null; };
+const usuario = async (req: Request) => { const h = req.headers.get('authorization') ?? ''; const u = [A, B, ADM, C].find((x) => h === 'Bearer ' + x.id); return u ?? null; };
 const base = { sql, usuario, appUrl: 'https://robertomendes.github.io/pingo/', origens: ['https://robertomendes.github.io'] };
 const chamar = async (fn: any, deps: any, quem: any, corpo: any) => {
   const r = await fn(new Request('http://x', { method: 'POST', body: JSON.stringify(corpo), headers: quem ? { authorization: 'Bearer ' + quem.id, origin: 'https://robertomendes.github.io' } : {} }), deps);
@@ -84,28 +91,47 @@ Deno.test('fluxo completo de cobrança', async (t) => {
   await t.step('admin conecta a Stripe: produto, preço, webhook e portal', async () => {
     const r = await chamar(admin, depsAdmin, ADM, { acao: 'conectar' });
     assertEquals(r.status, 200, JSON.stringify(r.corpo));
-    assert(r.corpo.stripe.conectada); assertEquals(r.corpo.stripe.modoChave, 'teste');
+    assert(r.corpo.stripe.conectada); assertEquals(r.corpo.stripe.modoChave, 'teste'); assert(r.corpo.stripe.anual);
+    const [cfg] = await sql`select * from public.config_cobranca`;
+    assertEquals(S.prices[cfg.stripe_price_anual_id].recurring.interval, 'year');
+    assertEquals(S.prices[cfg.stripe_price_anual_id].unit_amount, 29700);
+    assertEquals(S.prices[cfg.stripe_price_id].recurring.interval, 'month');
     assertEquals(Object.keys(S.webhooks).length, 1);
     const r2 = await chamar(admin, depsAdmin, ADM, { acao: 'conectar' }); // reconectar não duplica webhook
     assertEquals(r2.status, 200); assertEquals(Object.keys(S.webhooks).length, 1);
   });
   await t.step('admin define R$ 49,90, 7 dias de teste e abre as vendas', async () => {
-    const r = await chamar(admin, depsAdmin, ADM, { acao: 'salvar', preco_centavos: 4990, dias_teste: 7, vendas_abertas: true });
+    const r = await chamar(admin, depsAdmin, ADM, { acao: 'salvar', preco_centavos: 4990, dias_teste: 7, vendas_abertas: true, fundador_ate: '' });
     assertEquals(r.status, 200, JSON.stringify(r.corpo));
     const [cfg] = await sql`select * from public.config_cobranca`;
     assertEquals(cfg.preco_centavos, 4990); assertEquals(S.prices[cfg.stripe_price_id].unit_amount, 4990);
-    assertEquals(Object.values(S.prices).filter((p: any) => p.active).length, 1); // preço antigo arquivado
+    assertEquals(Object.values(S.prices).filter((p: any) => p.active).length, 2); // mensal antigo arquivado; anual mantido
+    assertEquals(cfg.fundador_ate, null);
+    assertEquals((await chamar(admin, depsAdmin, ADM, { acao: 'salvar', preco_centavos: 4990, dias_teste: 7, vendas_abertas: true, fundador_ate: '31/12' })).status, 400);
     assertEquals((await chamar(admin, depsAdmin, ADM, { acao: 'salvar', preco_centavos: 50, dias_teste: 7, vendas_abertas: true })).status, 400);
   });
   let cliente = '';
+  await t.step('checkout exige CPF válido', async () => {
+    let r = await chamar(assinatura, depsAss, A, { acao: 'checkout' });
+    assertEquals([r.status, r.corpo.campo], [400, 'cpf']);
+    r = await chamar(assinatura, depsAss, A, { acao: 'checkout', cpf: '529.982.247-24' });
+    assertEquals(r.status, 400);
+    r = await chamar(assinatura, depsAss, A, { acao: 'checkout', cpf: '111.111.111-11' });
+    assertEquals(r.status, 400);
+  });
   await t.step('A vai para a página de pagamento com teste grátis', async () => {
-    const r = await chamar(assinatura, depsAss, A, { acao: 'checkout' });
+    const r = await chamar(assinatura, depsAss, A, { acao: 'checkout', cpf: CPF });
     assertEquals(r.status, 200); assert(r.corpo.url.startsWith('https://checkout.stripe.test/'));
     assertEquals(r.cors, 'https://robertomendes.github.io');
     const s = S.sessoes.at(-1);
     assertEquals(s.mode, 'subscription'); assertEquals(s.subscription_data.trial_period_days, 7); assertEquals(s.locale, 'pt-BR');
     assertEquals(s.success_url, 'https://robertomendes.github.io/pingo/?assinatura=ok');
     cliente = (await statusDe(A)).stripe_customer_id; assert(cliente);
+    assertEquals(S.customers[cliente].taxIds.map((t: any) => [t.type, t.value]), [['br_cpf', CPF]]);
+    assertEquals(s.subscription_data.metadata.fundador, 'nao'); assertEquals(s.subscription_data.metadata.plano, 'mensal');
+    // tentar de novo com outro CPF troca o cadastrado (sem duplicar)
+    await chamar(assinatura, depsAss, A, { acao: 'checkout', cpf: CPF2 });
+    assertEquals(S.customers[cliente].taxIds.map((t: any) => t.value), ['111.444.777-35']);
   });
   let sub: any;
   await t.step('Stripe avisa: assinatura em teste → acesso liberado', async () => {
@@ -114,7 +140,7 @@ Deno.test('fluxo completo de cobrança', async (t) => {
     const r = await avisar('customer.subscription.created', sub);
     assertEquals(r.status, 200);
     const a = await statusDe(A);
-    assertEquals(a.status, 'trialing'); assertEquals(a.preco_centavos, 4990); assert(a.ja_teve_teste); assert(a.periodo_fim > new Date());
+    assertEquals(a.status, 'trialing'); assertEquals(a.preco_centavos, 4990); assertEquals([a.intervalo, a.fundador], ['month', false]); assert(a.ja_teve_teste); assert(a.periodo_fim > new Date());
     await sql.begin(async (tx: any) => { await tx`set local role authenticated`; await tx`select set_config('request.jwt.claim.sub', ${A.id}, true)`; const [x] = await tx`select public.tem_acesso() as ok`; assert(x.ok); });
   });
   await t.step('aviso com assinatura digital falsa é rejeitado', async () => {
@@ -125,7 +151,7 @@ Deno.test('fluxo completo de cobrança', async (t) => {
     assertEquals((await avisar('customer.subscription.created', sub, undefined, 'evt_repetido')).status, 200);
   });
   await t.step('quem já assina vai para o portal, não paga duas vezes', async () => {
-    const r = await chamar(assinatura, depsAss, A, { acao: 'checkout' });
+    const r = await chamar(assinatura, depsAss, A, { acao: 'checkout' }); // nem pede CPF
     assert(r.corpo.jaAssinante); assert(r.corpo.url.startsWith('https://billing.stripe.test/'));
   });
   await t.step('aviso atrasado de uma assinatura antiga cancelada não derruba a atual', async () => {
@@ -159,7 +185,7 @@ Deno.test('fluxo completo de cobrança', async (t) => {
     assertEquals(r.corpo.numeros.ativos, 1);
   });
   await t.step('B não ganha teste duas vezes (já teve) e sincronizar acha a assinatura sem webhook', async () => {
-    await chamar(assinatura, depsAss, B, { acao: 'checkout' });
+    await chamar(assinatura, depsAss, B, { acao: 'checkout', cpf: CPF });
     assertEquals(S.sessoes.at(-1).subscription_data.trial_period_days, 7);
     const cb = (await statusDe(B)).stripe_customer_id;
     const [cfg] = await sql`select stripe_price_id from public.config_cobranca`;
@@ -167,7 +193,7 @@ Deno.test('fluxo completo de cobrança', async (t) => {
     const r = await chamar(assinatura, depsAss, B, { acao: 'sincronizar' });
     assertEquals(r.corpo.status, 'trialing');
     S.subs[sb.id].status = 'canceled'; await chamar(assinatura, depsAss, B, { acao: 'sincronizar' });
-    await chamar(assinatura, depsAss, B, { acao: 'checkout' });
+    await chamar(assinatura, depsAss, B, { acao: 'checkout', cpf: CPF });
     assertEquals(S.sessoes.at(-1).subscription_data.trial_period_days, undefined);
   });
   await t.step('resumo do admin', async () => {
@@ -208,6 +234,31 @@ Deno.test('fluxo completo de cobrança', async (t) => {
     assertEquals((await chamar(admin, depsAdmin, ADM, { acao: 'acesso', user_id: ADM.id, ativo: false })).status, 400);
     assertEquals((await chamar(admin, depsAdmin, ADM, { acao: 'acesso', user_id: 'x', ativo: false })).status, 400);
     assertEquals((await chamar(admin, depsAdmin, ADM, { acao: 'acesso', user_id: 'dddddddd-0000-0000-0000-000000000009', ativo: true })).status, 404);
+  });
+  await t.step('plano anual com preço de fundador: fica de fora do reajuste', async () => {
+    await sql`insert into auth.users (id, email) values (${C.id}, ${C.email}) on conflict do nothing`;
+    let r = await chamar(admin, depsAdmin, ADM, { acao: 'salvar', preco_centavos: 5990, dias_teste: 7, vendas_abertas: true, fundador_ate: '2099-12-31' });
+    assertEquals(r.corpo.config.fundador_ate, '2099-12-31');
+    r = await chamar(assinatura, depsAss, C, { acao: 'checkout', cpf: CPF, plano: 'anual' });
+    assertEquals(r.status, 200);
+    const s = S.sessoes.at(-1), [cfg] = await sql`select * from public.config_cobranca`;
+    assertEquals(s.line_items[0].price, cfg.stripe_price_anual_id);
+    assertEquals([s.subscription_data.metadata.plano, s.subscription_data.metadata.fundador], ['anual', 'sim']);
+    const sc = criarAssinaturaNaStripe((await statusDe(C)).stripe_customer_id, cfg.stripe_price_anual_id, C.id, 'active');
+    sc.metadata.fundador = 'sim';
+    await avisar('customer.subscription.created', sc);
+    const c = await statusDe(C); assertEquals([c.intervalo, c.fundador, c.preco_centavos], ['year', true, 29700]);
+    // MRR: A paga 5990/mês; C paga 29700/ano = 2475/mês
+    r = await chamar(admin, depsAdmin, ADM, { acao: 'resumo' });
+    assertEquals([r.corpo.numeros.mrr_centavos, r.corpo.numeros.anuais, r.corpo.numeros.fundadores], [5990 + 2475, 1, 1]);
+    // reajuste do anual para todos: a fundadora fica no preço antigo
+    r = await chamar(admin, depsAdmin, ADM, { acao: 'salvar', preco_centavos: 5990, preco_anual_centavos: 47900, dias_teste: 7, vendas_abertas: true, fundador_ate: '2099-12-31', aplicar_atuais: true });
+    assertEquals([r.corpo.fundadores, r.corpo.falhas], [1, 0]);
+    assertEquals(S.subs[sc.id].items.data[0].price.unit_amount, 29700);
+    const [cfg2] = await sql`select * from public.config_cobranca`;
+    assertEquals([cfg2.preco_anual_centavos, S.prices[cfg2.stripe_price_anual_id].unit_amount], [47900, 47900]);
+    assertEquals(S.prices[cfg.stripe_price_anual_id].active, false);
+    assertEquals((await chamar(admin, depsAdmin, ADM, { acao: 'salvar', preco_centavos: 5990, preco_anual_centavos: 0, dias_teste: 7, vendas_abertas: true })).status, 400);
   });
   await t.step('excluir conta cancela a cobrança e apaga tudo', async () => {
     const r = await chamar(assinatura, depsAss, A, { acao: 'excluir_conta' });

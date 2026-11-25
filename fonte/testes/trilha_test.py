@@ -35,7 +35,7 @@ async def main():
         # conta, assinatura e criança
         await A.click('[data-act=contaModo][data-m=criar]')
         await A.fill('input[name=email]', 'trilha@x.com'); await A.fill('input[name=senha]', '12345678'); await A.check('input[name=ok]'); await A.click('button[type=submit]'); await idle(A)
-        await A.click('[data-act=assinar]'); await idle(A, 2500)
+        await A.fill('input[name=cpf]', '52998224725'); await A.click('[data-act=assinar]'); await idle(A, 2500)
         await A.fill('input[name=nome]', 'Téo'); await A.click('form[data-form=perfil] button[type=submit]'); await idle(A, 500)
         t = await A.locator('main').inner_text()
         check('Adição até 20' in t and 'parte 1 de 4' in t.lower() and 'lição 1 de 3' in t, 'início mostra a parte 1 e 3 lições por etapa')

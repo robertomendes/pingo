@@ -18,8 +18,9 @@ export async function aplicarAssinatura(sql: any, sub: any): Promise<boolean> {
   const existe = (await sql`select 1 from auth.users where id = ${dono}`).length > 0;
   if (!existe) return false;
   await sql`
-    insert into public.assinaturas (dono, stripe_customer_id, stripe_subscription_id, status, preco_centavos, periodo_fim, teste_fim, cancelar_no_fim, ja_teve_teste, atualizado_em)
+    insert into public.assinaturas (dono, stripe_customer_id, stripe_subscription_id, status, preco_centavos, intervalo, fundador, periodo_fim, teste_fim, cancelar_no_fim, ja_teve_teste, atualizado_em)
     values (${dono}, ${cliente}, ${sub.id}, ${sub.status}, ${item?.price?.unit_amount ?? null},
+            ${item?.price?.recurring?.interval === 'year' ? 'year' : 'month'}, ${sub.metadata?.fundador === 'sim'},
             ${fim ? new Date(fim * 1000) : null}, ${sub.trial_end ? new Date(sub.trial_end * 1000) : null},
             ${!!(sub.cancel_at_period_end || sub.cancel_at)}, ${!!sub.trial_end}, now())
     on conflict (dono) do update set
@@ -27,6 +28,8 @@ export async function aplicarAssinatura(sql: any, sub: any): Promise<boolean> {
       stripe_subscription_id = excluded.stripe_subscription_id,
       status = excluded.status,
       preco_centavos = excluded.preco_centavos,
+      intervalo = excluded.intervalo,
+      fundador = excluded.fundador,
       periodo_fim = excluded.periodo_fim,
       teste_fim = excluded.teste_fim,
       cancelar_no_fim = excluded.cancelar_no_fim,

@@ -2,7 +2,7 @@ import asyncio, json, re, itertools, datetime
 from playwright.async_api import async_playwright
 BASE='http://localhost:8766/app/'
 class Server:
-    def __init__(s): s.users={}; s.toks={}; s.cri={}; s.lic=[]; s.offline=set(); s.clock=itertools.count(1); s.PAG=3; s.calls=[]; s.assin={}; s.admins=set(); s.config={'preco_centavos':4990,'dias_teste':7,'vendas_abertas':True,'modo':'teste'}; s.checkouts=0; s.termos={}; s.consents=[]
+    def __init__(s): s.users={}; s.toks={}; s.cri={}; s.lic=[]; s.offline=set(); s.clock=itertools.count(1); s.PAG=3; s.calls=[]; s.assin={}; s.admins=set(); s.config={'preco_centavos':4990,'preco_anual_centavos':29700,'fundador_ate':'2099-12-31','dias_teste':7,'vendas_abertas':True,'modo':'teste'}; s.ultimo_checkout=None; s.checkouts=0; s.termos={}; s.consents=[]
     def tem(s,uid):
         a=s.assin.get(uid) or {}
         if uid in s.admins: return True
@@ -37,8 +37,10 @@ class Server:
             nome=a['nome']; c=a['corpo']; acao=c.get('acao')
             if nome=='assinatura' and acao=='checkout':
                 if not s.config['vendas_abertas']: return {'erro':'As assinaturas ainda não estão abertas.','status':409}
-                s.checkouts+=1; fim=(datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(days=7)).isoformat()
-                s.assin[uid]={'status':'trialing','preco_centavos':s.config['preco_centavos'],'periodo_fim':fim,'teste_fim':fim,'cancelar_no_fim':False,'ja_teve_teste':True}
+                if len(''.join(ch for ch in str(c.get('cpf','')) if ch.isdigit()))!=11: return {'erro':'Confira o CPF: ele é necessário para o recibo.','status':400}
+                s.checkouts+=1; s.ultimo_checkout=c; fim=(datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(days=7)).isoformat()
+                anual=c.get('plano')=='anual'
+                s.assin[uid]={'status':'trialing','preco_centavos':s.config['preco_anual_centavos' if anual else 'preco_centavos'],'intervalo':'year' if anual else 'month','fundador':True,'periodo_fim':fim,'teste_fim':fim,'cancelar_no_fim':False,'ja_teve_teste':True}
                 return {'ok':{'url':'http://localhost:8766/?assinatura=ok'}}
             if nome=='assinatura' and acao=='sincronizar': return {'ok':{'status':(s.assin.get(uid) or {}).get('status','nenhuma')}}
             if nome=='assinatura' and acao=='portal': return {'ok':{'url':'http://localhost:8766/#portal'}}
@@ -64,7 +66,7 @@ class Server:
                     if c['ativo']: x['bloqueado']=False; x['cortesia']=x.get('cortesia') or not pago
                     else: x['cortesia']=False; x['bloqueado']=pago
                     return {'ok':{'usuarios':lista(),'aviso':'Acesso bloqueado, mas a assinatura continua sendo cobrada na Stripe.' if (not c['ativo'] and pago) else None}}
-                if acao=='salvar': s.config.update(preco_centavos=c['preco_centavos'],dias_teste=c['dias_teste'],vendas_abertas=c['vendas_abertas']); s.ultimo_salvar=c
+                if acao=='salvar': s.config.update(preco_centavos=c['preco_centavos'],preco_anual_centavos=c.get('preco_anual_centavos',s.config['preco_anual_centavos']),fundador_ate=c.get('fundador_ate') or None,dias_teste=c['dias_teste'],vendas_abertas=c['vendas_abertas']); s.ultimo_salvar=c
                 n=lambda st: sum(1 for x in s.assin.values() if x.get('status')==st)
                 return {'ok':{'config':dict(s.config),'stripe':{'chave':True,'modoChave':'teste','conectada':True},'numeros':{'ativos':n('active'),'em_teste':n('trialing'),'pendentes':n('past_due'),'cancelados':n('canceled'),'mrr_centavos':sum(x['preco_centavos'] for x in s.assin.values() if x.get('status')=='active')},'migrados':0,'falhas':0}}
             return {'erro':'acao?'}
@@ -143,10 +145,18 @@ async def main():
         check('Assine o Pingo' in t and 'R$ 49,90' in t and '7 dias grátis' in t,'conta nova sem assinatura vê a oferta com preço e teste grátis')
         await A.screenshot(path='/home/claude/pingo/test/v4_assinar.png',full_page=True)
         await A.evaluate("PINGO_TEST.db.criancas"); 
-        await A.click('[data-act=assinar]'); await A.wait_for_url('**/pingo/**',timeout=3000) if False else None
+        check(await A.locator('input[name=plano][value=anual]').is_checked() and 'R$ 297,00' in t and 'R$ 24,75' in t and 'economize 50%' in t,'oferta mostra o plano anual marcado, com o valor por mês e a economia')
+        check('Preço de fundador' in t and '31/12/2099' in t,'oferta de fundador aparece com a data certa')
+        await A.click('[data-act=assinar]'); await idle(A,300)
+        check(S.checkouts==0 and 'Digite o CPF' in await A.locator('main').inner_text(),'sem CPF não abre o pagamento')
+        await A.fill('input[name=cpf]','52998224724'); await A.click('[data-act=assinar]'); await idle(A,300)
+        check(S.checkouts==0 and 'CPF inválido' in await A.locator('main').inner_text() and await A.input_value('input[name=cpf]')=='529.982.247-24','CPF com dígito errado é recusado, com máscara')
+        await A.fill('input[name=cpf]','52998224725')
+        await A.click('[data-act=assinar]')
         await idle(A,2500)
         check(await A.locator('input[name=nome]').count()==1,'depois do pagamento confirmado, o app libera o cadastro da criança')
         check('assinatura=' not in A.url,'o endereço de retorno é limpo')
+        check(S.ultimo_checkout and S.ultimo_checkout.get('plano')=='anual' and S.ultimo_checkout.get('cpf')=='529.982.247-25','checkout leva o plano escolhido e o CPF')
         await A.fill('input[name=nome]','Nina'); await A.click('form[data-form=perfil] button[type=submit]')
         check(await A.locator('input[name=ok]').count()==0,'consentimento não é pedido de novo')
         await lesson(A); await idle(A)
@@ -212,8 +222,9 @@ async def main():
         check(await A.locator('[data-act=assinar]').count()==0 and await A.locator('form[data-form=conta]').count()==0,'administrador entra sem assinatura')
         await pais(A); await A.click('[data-act=abrirAdmin]'); await idle(A,600)
         await A.screenshot(path='/home/claude/pingo/test/v4_admin.png',full_page=True)
-        await A.fill('input[name=preco]','39,90'); await A.fill('input[name=dias]','14'); await A.check('input[name=abertas]'); await A.click('form[data-form=admin] button[type=submit]'); await idle(A,600)
+        await A.fill('input[name=preco]','39,90'); await A.fill('input[name=anual]','279,00'); await A.fill('input[name=fundador]','2026-12-31'); await A.fill('input[name=dias]','14'); await A.check('input[name=abertas]'); await A.click('form[data-form=admin] button[type=submit]'); await idle(A,600)
         check(S.config['preco_centavos']==3990 and S.config['dias_teste']==14 and S.config['vendas_abertas'],'admin salva R$ 39,90, 14 dias e abre as vendas')
+        check(S.config['preco_anual_centavos']==27900 and S.config['fundador_ate']=='2026-12-31','admin salva o preço anual e a data da oferta de fundador')
         check('Salvo' in await A.locator('[role=alert]').inner_text(),'admin vê confirmação')
         await A.fill('input[name=preco]','abc'); await A.click('form[data-form=admin] button[type=submit]'); await idle(A,300)
         check('inválido' in await A.locator('[role=alert]').inner_text() and S.config['preco_centavos']==3990,'preço inválido é recusado no app')
