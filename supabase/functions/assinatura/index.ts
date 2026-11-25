@@ -128,7 +128,7 @@ export async function handler(req: Request, deps: Deps): Promise<Response> {
           client_reference_id: u.id,
           line_items: [{ price: precoId, quantity: 1 }],
           subscription_data: { metadata: { user_id: u.id, plano: anual ? 'anual' : 'mensal', fundador: fundador ? 'sim' : 'nao' }, ...(teste ? { trial_period_days: cfg.dias_teste } : {}) },
-          payment_method_types: ['card'],
+          allowed_payment_method_types: ['card'], // só cartão (o parâmetro antigo, payment_method_types, saiu da API em 2026-09-30)
           payment_method_collection: 'always',
           locale: 'pt-BR',
           allow_promotion_codes: true,
