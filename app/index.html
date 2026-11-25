@@ -251,7 +251,7 @@ function recognize(strokes, w, h) {
 
 /* ---------- Dados: ficam no aparelho e, com conta, têm cópia na nuvem ---------- */
 const CHAVE = 'pingo.v1';
-const TERMOS_VERSAO = '2026-11-18'; // mude a data quando os Termos ou a Política mudarem: todos aceitam de novo
+const TERMOS_VERSAO = '2026-11-25'; // mude a data quando os Termos ou a Política mudarem: todos aceitam de novo
 const MAX_LICOES = 400;
 let memoria = null;
 function novoId(p) { try { if (window.crypto && crypto.randomUUID) return p + '-' + crypto.randomUUID(); } catch (e) { } return p + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
